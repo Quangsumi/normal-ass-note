@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: normal-ass-note
+  namespace: normal-ass-note
+  labels:
+    app.kubernetes.io/name: normal-ass-note
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: normal-ass-note
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

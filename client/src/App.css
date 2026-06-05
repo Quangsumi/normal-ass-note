@@ -1,0 +1,117 @@
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.app {
+  min-height: 100vh;
+  position: relative;
+}
+
+.editor {
+  box-sizing: border-box;
+  border: none;
+  display: block;
+  height: 100vh;
+  inset: 0;
+  outline: none;
+  overflow: auto;
+  position: fixed;
+  resize: none;
+  white-space: pre-wrap;
+  width: 100vw;
+  word-break: break-word;
+}
+
+.editor img {
+  height: auto;
+  max-width: 100%;
+}
+
+.save-panel {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  user-select: none;
+  z-index: 2;
+}
+
+.save-panel form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 16rem;
+}
+
+.save-panel input {
+  user-select: text;
+}
+
+.message {
+  max-width: 16rem;
+  overflow-wrap: anywhere;
+}
+
+.tab-bar {
+  align-items: flex-end;
+  display: flex;
+  gap: 4px;
+  bottom: 0;
+  left: 0;
+  overflow-x: auto;
+  padding: 4px;
+  position: fixed;
+  right: 0;
+  user-select: none;
+  z-index: 2;
+}
+
+.tab-item {
+  display: inline-flex;
+  flex: 0 0 auto;
+  position: relative;
+}
+
+.tab-bar button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.tab-title {
+  max-width: 14rem;
+  overflow: hidden;
+  padding-right: 1.6rem;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  height: calc(100% - 4px);
+  line-height: 1;
+  padding: 0;
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 1.4rem;
+  z-index: 1;
+}
+
+.tab-rename {
+  user-select: text;
+  width: 10rem;
+}

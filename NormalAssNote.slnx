@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/server/">
+    <Project Path="server/NormalAssNote.Api.csproj" />
+    <Project Path="server/src/NormalAssNote.Application/NormalAssNote.Application.csproj" />
+    <Project Path="server/src/NormalAssNote.Domain/NormalAssNote.Domain.csproj" />
+    <Project Path="server/src/NormalAssNote.Infrastructure/NormalAssNote.Infrastructure.csproj" />
+  </Folder>
+</Solution>

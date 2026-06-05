@@ -1,0 +1,9 @@
+.npm-cache/
+.tmp-build/
+.vs/
+client/node_modules/
+client/dist/
+server/wwwroot/
+server/bin/
+server/obj/
+server/appsettings.Development.json

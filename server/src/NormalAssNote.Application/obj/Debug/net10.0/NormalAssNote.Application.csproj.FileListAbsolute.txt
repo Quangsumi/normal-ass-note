@@ -1,0 +1,15 @@
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\bin\Debug\net10.0\NormalAssNote.Application.deps.json
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\bin\Debug\net10.0\NormalAssNote.Application.dll
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\bin\Debug\net10.0\NormalAssNote.Application.pdb
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\bin\Debug\net10.0\NormalAssNote.Domain.dll
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\bin\Debug\net10.0\NormalAssNote.Domain.pdb
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\obj\Debug\net10.0\NormalAssNote.Application.csproj.AssemblyReference.cache
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\obj\Debug\net10.0\NormalAssNote.Application.GeneratedMSBuildEditorConfig.editorconfig
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\obj\Debug\net10.0\NormalAssNote.Application.AssemblyInfoInputs.cache
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\obj\Debug\net10.0\NormalAssNote.Application.AssemblyInfo.cs
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\obj\Debug\net10.0\NormalAssNote.Application.csproj.CoreCompileInputs.cache
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\obj\Debug\net10.0\NormalAs.E31DF648.Up2Date
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\obj\Debug\net10.0\NormalAssNote.Application.dll
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\obj\Debug\net10.0\refint\NormalAssNote.Application.dll
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\obj\Debug\net10.0\NormalAssNote.Application.pdb
+D:\OneDrive\Desktop\Side Quests\PETs\normal-ass-note\server\src\NormalAssNote.Application\obj\Debug\net10.0\ref\NormalAssNote.Application.dll

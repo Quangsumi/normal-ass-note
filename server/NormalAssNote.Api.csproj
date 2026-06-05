@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <FrontendProjectPath>$(MSBuildProjectDirectory)\..\client\</FrontendProjectPath>
+    <FrontendDistPath>$(FrontendProjectPath)dist\</FrontendDistPath>
+    <FrontendBuildOutputPath>$(MSBuildProjectDirectory)\wwwroot\</FrontendBuildOutputPath>
+    <NpmCommand Condition="'$(OS)' == 'Windows_NT'">npm.cmd</NpmCommand>
+    <NpmCommand Condition="'$(OS)' != 'Windows_NT'">npm</NpmCommand>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="src\**" />
+    <Content Remove="src\**" />
+    <EmbeddedResource Remove="src\**" />
+    <None Remove="src\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="src\NormalAssNote.Application\NormalAssNote.Application.csproj" />
+    <ProjectReference Include="src\NormalAssNote.Infrastructure\NormalAssNote.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <Target Name="BuildFrontend" BeforeTargets="PrepareForBuild" Condition="'$(SkipFrontendBuild)' != 'true'">
+    <Message Importance="high" Text="Building React frontend for ASP.NET Core static hosting..." />
+    <Exec WorkingDirectory="$(FrontendProjectPath)" Command="$(NpmCommand) ci" Condition="Exists('$(FrontendProjectPath)package-lock.json') and !Exists('$(FrontendProjectPath)node_modules')" />
+    <Exec WorkingDirectory="$(FrontendProjectPath)" Command="$(NpmCommand) install" Condition="!Exists('$(FrontendProjectPath)package-lock.json') and !Exists('$(FrontendProjectPath)node_modules')" />
+    <Exec WorkingDirectory="$(FrontendProjectPath)" Command="$(NpmCommand) run build" />
+    <RemoveDir Directories="$(FrontendBuildOutputPath)" />
+    <MakeDir Directories="$(FrontendBuildOutputPath)" />
+    <ItemGroup>
+      <FrontendDistFiles Include="$(FrontendDistPath)**\*" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(FrontendDistFiles)"
+      DestinationFiles="@(FrontendDistFiles->'$(FrontendBuildOutputPath)%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+
+</Project>

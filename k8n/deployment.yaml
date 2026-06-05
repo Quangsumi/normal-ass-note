@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: normal-ass-note
+  namespace: normal-ass-note
+  labels:
+    app.kubernetes.io/name: normal-ass-note
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: normal-ass-note
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: normal-ass-note
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: normal-ass-note
+          image: quangsumi/normal-ass-note:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: normal-ass-note-config
+            - secretRef:
+                name: normal-ass-note-secret
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

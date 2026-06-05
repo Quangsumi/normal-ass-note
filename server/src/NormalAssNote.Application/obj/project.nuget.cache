@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "+xAgRCnTziM=",
+  "success": true,
+  "projectFilePath": "D:\\OneDrive\\Desktop\\Side Quests\\PETs\\normal-ass-note\\server\\src\\NormalAssNote.Application\\NormalAssNote.Application.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Mike Hawk\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\10.0.8\\microsoft.extensions.dependencyinjection.abstractions.10.0.8.nupkg.sha512"
+  ],
+  "logs": []
+}
