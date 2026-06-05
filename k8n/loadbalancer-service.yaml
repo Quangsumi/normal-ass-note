@@ -4,12 +4,12 @@ metadata:
   name: normal-ass-note-lb
   namespace: normal-ass-note
   labels:
-    app: normal-ass-note
+    app.kubernetes.io/name: normal-ass-note
 spec:
   type: LoadBalancer
   loadBalancerIP: 192.168.63.221
   selector:
-    app: normal-ass-note
+    app.kubernetes.io/name: normal-ass-note
   ports:
     - name: http
       port: 80
