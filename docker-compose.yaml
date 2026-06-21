@@ -1,0 +1,9 @@
+services:
+  website:
+    image: quangsumi/normal-ass-note:latest
+    pull_policy: always
+    ports:
+      - "5001:8080"
+    restart: unless-stopped
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=192.168.***.***;Port=5432;Database=notes_backup;Username=quangsumi;Password=***
