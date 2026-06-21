@@ -39,5 +39,5 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/pi-dashboard:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/pi-dashboard:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/normal-ass-note:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/normal-ass-note:${{ github.sha }}
