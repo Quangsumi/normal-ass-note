@@ -6,15 +6,13 @@
 
 Dockerfile
 docker-compose*.yml
-*.log
 
 client/node_modules/
 client/dist/
 
+*.log
 **/bin/
 **/obj/
-server/bin/
-server/obj/
+
 server/wwwroot/
 server/appsettings.Development.json
-server/*.log
