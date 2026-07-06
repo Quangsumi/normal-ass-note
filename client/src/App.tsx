@@ -3,10 +3,10 @@ import type { FormEvent, KeyboardEvent } from 'react'
 import './App.css'
 
 const DEFAULT_TITLE = 'normal ass note'
-const LOCAL_TABS_KEY = 'normal-ass-note.tabs'
 const LOCAL_AUTH_KEY = 'normal-ass-note.auth'
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '')
 const EDITOR_DOCUMENT = '<!doctype html><html contenteditable=""><head><style>html,body{min-height:100%}body{box-sizing:border-box;margin:8px;padding:0 10rem 2.5rem 0}img{max-width:100%;height:auto}@media(max-width:640px){body{padding-right:0;padding-bottom:5rem}}</style></head><body></body></html>'
+const MAX_CONFIRM_TAB_NAMES = 20
 
 type NoteTab = {
   id: string
@@ -28,6 +28,17 @@ type SavedNote = {
   content: string
 }
 
+type DatabaseTabSnapshot = Pick<NoteTab, 'title' | 'content'>
+type DatabaseSnapshot = Map<string, DatabaseTabSnapshot>
+
+type DatabaseChangeSummary = {
+  snapshotKnown: boolean
+  currentTabs: string[]
+  createdTabs: string[]
+  changedTabs: string[]
+  deletedTabs: string[]
+}
+
 function App() {
   const [tabs, setTabs] = useState<NoteTab[]>(() => [createBlankTab()])
   const [activeId, setActiveId] = useState(() => tabs[0]?.id ?? '')
@@ -44,10 +55,14 @@ function App() {
   const [pendingDatabaseAction, setPendingDatabaseAction] = useState<DatabaseAction | null>(null)
   const [message, setMessage] = useState('')
   const editorRef = useRef<HTMLIFrameElement>(null)
+  const tabBarRef = useRef<HTMLElement>(null)
   const tabsRef = useRef(tabs)
   const activeIdRef = useRef(activeId)
+  const databaseSnapshotRef = useRef<DatabaseSnapshot | null>(null)
 
   const activeTab = tabs.find((tab) => tab.id === activeId) ?? tabs[0]
+  const activeTabContent = activeTab?.content
+  const activeTabId = activeTab?.id
 
   useEffect(() => {
     if (!activeId && tabs[0]) {
@@ -61,12 +76,26 @@ function App() {
   }, [activeId, tabs])
 
   useLayoutEffect(() => {
-    if (!activeTab) {
+    if (!activeTabId) {
       return
     }
 
-    writeEditorContent(activeTab.content, activeTab.id)
-  }, [activeTab?.content, activeTab?.id])
+    writeEditorContent(activeTabContent ?? '', activeTabId)
+  }, [activeTabContent, activeTabId])
+
+  useLayoutEffect(() => {
+    const tabBar = tabBarRef.current
+    if (!tabBar) {
+      return
+    }
+
+    const updatePadding = () => updateEditorBottomPadding(editorRef.current, tabBar)
+    const observer = new ResizeObserver(updatePadding)
+    observer.observe(tabBar)
+    updatePadding()
+
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     if (auth) {
@@ -74,6 +103,7 @@ function App() {
       return
     }
 
+    databaseSnapshotRef.current = null
     localStorage.removeItem(LOCAL_AUTH_KEY)
   }, [auth])
 
@@ -141,6 +171,8 @@ function App() {
     if (activeTab) {
       writeEditorContent(activeTab.content, activeTab.id)
     }
+
+    updateEditorBottomPadding(frame, tabBarRef.current)
   }
 
   async function handleEditorPaste(event: globalThis.ClipboardEvent) {
@@ -179,6 +211,21 @@ function App() {
 
   function closeTab(tabId: string) {
     const currentTabs = tabsWithCurrentEditor()
+    const closingTab = currentTabs.find((tab) => tab.id === tabId)
+    if (!closingTab) {
+      return
+    }
+
+    const title = closingTab.title || DEFAULT_TITLE
+    const message =
+      currentTabs.length === 1
+        ? `Delete "${title}"? This will clear the current note and open a blank tab.`
+        : `Delete "${title}"?`
+
+    if (!window.confirm(message)) {
+      return
+    }
+
     setTabsInMemory((() => {
       const closingIndex = currentTabs.findIndex((tab) => tab.id === tabId)
 
@@ -229,18 +276,6 @@ function App() {
     }
   }
 
-  function saveToBrowser() {
-    const nextTabs = tabsWithCurrentEditor()
-    localStorage.setItem(LOCAL_TABS_KEY, JSON.stringify(nextTabs))
-    setMessage(`saved ${nextTabs.length} note${nextTabs.length === 1 ? '' : 's'} to browser`)
-  }
-
-  function loadFromBrowser() {
-    const nextTabs = readBrowserTabs()
-    replaceWorkingTabs(nextTabs)
-    setMessage(`loaded ${nextTabs.length} note${nextTabs.length === 1 ? '' : 's'} from browser`)
-  }
-
   async function saveToDatabase() {
     const nextTabs = tabsWithCurrentEditor()
     if (!auth) {
@@ -250,7 +285,7 @@ function App() {
       return
     }
 
-    await syncDatabaseNotes(auth.token, nextTabs)
+    await confirmAndSyncDatabaseNotes(auth.token, nextTabs)
   }
 
   async function loadFromDatabase() {
@@ -292,14 +327,32 @@ function App() {
 
     const savedNotes = (await response.json()) as SavedNote[]
     if (savedNotes.length === 0) {
+      databaseSnapshotRef.current = createDatabaseSnapshot([])
       replaceWorkingTabs([createBlankTab()])
       setMessage('database has no notes yet')
       return
     }
 
     const nextTabs = savedNotes.map(fromSavedNote)
+    databaseSnapshotRef.current = createDatabaseSnapshot(nextTabs)
     replaceWorkingTabs(nextTabs)
     setMessage(`loaded ${nextTabs.length} note${nextTabs.length === 1 ? '' : 's'} from database`)
+  }
+
+  async function confirmAndSyncDatabaseNotes(token: string, nextTabs: NoteTab[]) {
+    const summary = getDatabaseChangeSummary(nextTabs, databaseSnapshotRef.current)
+
+    if (!hasDatabaseChanges(summary)) {
+      setMessage('no database changes to save')
+      return
+    }
+
+    if (!window.confirm(formatDatabaseSaveConfirmation(summary))) {
+      setMessage('database save canceled')
+      return
+    }
+
+    await syncDatabaseNotes(token, nextTabs)
   }
 
   async function syncDatabaseNotes(token: string, nextTabs: NoteTab[]) {
@@ -333,6 +386,7 @@ function App() {
 
     const savedNotes = (await response.json()) as SavedNote[]
     const syncedTabs = savedNotes.map(fromSavedNote)
+    databaseSnapshotRef.current = createDatabaseSnapshot(syncedTabs)
     setTabsInMemory(syncedTabs)
     setMessage(`saved ${syncedTabs.length} note${syncedTabs.length === 1 ? '' : 's'} to database`)
   }
@@ -375,7 +429,7 @@ function App() {
     setMessage(`${authMode === 'login' ? 'logged in' : 'registered'} as ${nextAuth.userName}`)
 
     if (databaseAction === 'save') {
-      await syncDatabaseNotes(nextAuth.token, tabsWithCurrentEditor())
+      await confirmAndSyncDatabaseNotes(nextAuth.token, tabsWithCurrentEditor())
     }
 
     if (databaseAction === 'load') {
@@ -404,12 +458,6 @@ function App() {
       />
 
       <aside className="save-panel" contentEditable={false}>
-        <button type="button" onClick={saveToBrowser}>
-          save to browser
-        </button>
-        <button type="button" onClick={loadFromBrowser}>
-          load from browser
-        </button>
         <button type="button" onClick={saveToDatabase}>
           save to db
         </button>
@@ -483,7 +531,7 @@ function App() {
         {message && <output className="message">{message}</output>}
       </aside>
 
-      <nav aria-label="note tabs" className="tab-bar" contentEditable={false}>
+      <nav aria-label="note tabs" className="tab-bar" contentEditable={false} ref={tabBarRef}>
         {tabs.map((tab) =>
           editingId === tab.id ? (
             <input
@@ -526,28 +574,6 @@ function App() {
   )
 }
 
-function readBrowserTabs() {
-  const savedTabs = localStorage.getItem(LOCAL_TABS_KEY)
-  if (!savedTabs) {
-    return [createBlankTab()]
-  }
-
-  try {
-    const parsed = JSON.parse(savedTabs) as NoteTab[]
-    const tabs = parsed
-      .filter((tab) => tab && typeof tab.id === 'string')
-      .map((tab) => ({
-        id: tab.id,
-        title: tab.title || DEFAULT_TITLE,
-        content: normalizeContent(tab.content),
-      }))
-
-    return tabs.length > 0 ? tabs : [createBlankTab()]
-  } catch {
-    return [createBlankTab()]
-  }
-}
-
 function readLocalAuth() {
   const savedAuth = localStorage.getItem(LOCAL_AUTH_KEY)
   if (!savedAuth) {
@@ -559,6 +585,131 @@ function readLocalAuth() {
   } catch {
     return null
   }
+}
+
+function createDatabaseSnapshot(tabs: NoteTab[]): DatabaseSnapshot {
+  const snapshot: DatabaseSnapshot = new Map()
+
+  for (const tab of tabs) {
+    snapshot.set(tab.id, {
+      title: tab.title,
+      content: tab.content,
+    })
+  }
+
+  return snapshot
+}
+
+function getDatabaseChangeSummary(
+  currentTabs: NoteTab[],
+  snapshot: DatabaseSnapshot | null,
+): DatabaseChangeSummary {
+  if (!snapshot) {
+    return {
+      snapshotKnown: false,
+      currentTabs: currentTabs.map((tab) => formatTabName(tab.title)),
+      createdTabs: [],
+      changedTabs: [],
+      deletedTabs: [],
+    }
+  }
+
+  const currentIds = new Set<string>()
+  const createdTabs: string[] = []
+  const changedTabs: string[] = []
+
+  for (const tab of currentTabs) {
+    currentIds.add(tab.id)
+
+    const savedTab = snapshot.get(tab.id)
+    if (!savedTab) {
+      createdTabs.push(formatTabName(tab.title))
+      continue
+    }
+
+    if (savedTab.title !== tab.title || savedTab.content !== tab.content) {
+      changedTabs.push(formatTabName(tab.title))
+    }
+  }
+
+  const deletedTabs: string[] = []
+  for (const [tabId, savedTab] of snapshot) {
+    if (!currentIds.has(tabId)) {
+      deletedTabs.push(formatTabName(savedTab.title))
+    }
+  }
+
+  return {
+    snapshotKnown: true,
+    currentTabs: [],
+    createdTabs,
+    changedTabs,
+    deletedTabs,
+  }
+}
+
+function hasDatabaseChanges(summary: DatabaseChangeSummary) {
+  if (!summary.snapshotKnown) {
+    return summary.currentTabs.length > 0
+  }
+
+  return (
+    summary.createdTabs.length +
+      summary.changedTabs.length +
+      summary.deletedTabs.length >
+    0
+  )
+}
+
+function formatDatabaseSaveConfirmation(summary: DatabaseChangeSummary) {
+  if (!summary.snapshotKnown) {
+    return [
+      'No database copy has been loaded this session.',
+      'Save current tabs to database?',
+      '',
+      'This will replace database notes with the current tab set.',
+      '',
+      ...formatTabGroup('Tabs to save', summary.currentTabs, '*'),
+    ].join('\n')
+  }
+
+  return [
+    'Save these database changes?',
+    '',
+    ...formatTabGroup('New tabs', summary.createdTabs, '+'),
+    ...formatTabGroup('Changed tabs', summary.changedTabs, '~'),
+    ...formatTabGroup('Deleted tabs', summary.deletedTabs, '-'),
+  ].join('\n')
+}
+
+function formatTabGroup(label: string, tabNames: string[], prefix: string) {
+  if (tabNames.length === 0) {
+    return []
+  }
+
+  const visibleTabNames = tabNames.slice(0, MAX_CONFIRM_TAB_NAMES)
+  const hiddenCount = tabNames.length - visibleTabNames.length
+  const lines = [
+    `${label} (${tabNames.length}):`,
+    ...visibleTabNames.map((tabName) => `${prefix} ${tabName}`),
+  ]
+
+  if (hiddenCount > 0) {
+    lines.push(`${prefix} ...and ${hiddenCount} more`)
+  }
+
+  lines.push('')
+  return lines
+}
+
+function formatTabName(title: string) {
+  const name = title.trim().replace(/\s+/g, ' ') || DEFAULT_TITLE
+
+  if (name.length <= 80) {
+    return name
+  }
+
+  return `${name.slice(0, 77)}...`
 }
 
 function createBlankTab(): NoteTab {
@@ -610,6 +761,16 @@ function writeEditorContent(content: string, tabId: string, force = false) {
 
   doc.body.innerHTML = content
   frame.dataset.tabId = tabId
+}
+
+function updateEditorBottomPadding(editor: HTMLIFrameElement | null, tabBar: HTMLElement | null) {
+  const doc = getEditorDocument(editor)
+  if (!doc?.body || !tabBar) {
+    return
+  }
+
+  const tabBarHeight = Math.ceil(tabBar.getBoundingClientRect().height)
+  doc.body.style.paddingBottom = `${tabBarHeight + 8}px`
 }
 
 function insertEditorHtml(html: string) {
