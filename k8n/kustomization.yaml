@@ -9,3 +9,4 @@ resources:
   - service.yaml
   # - loadbalancer-service.yaml
   - tailscale.yaml
+  - traefik.yaml
