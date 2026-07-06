@@ -1,14 +1,20 @@
 .git/
-.vs/
 .config/
-.tmp-build/
+.devcontainer/
+.github/
 .npm-cache/
+.tmp-build/
+.vs/
 
 Dockerfile
 docker-compose*.yml
+.dockerignore
 
-client/node_modules/
 client/dist/
+client/node_modules/
+
+.env
+.gitignore
 
 *.log
 **/bin/
