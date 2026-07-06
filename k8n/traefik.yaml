@@ -6,7 +6,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: note.home.arpa
+    - host: note.home
       http:
         paths:
           - path: /
