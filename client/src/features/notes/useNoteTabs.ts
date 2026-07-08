@@ -12,7 +12,15 @@ import {
 import { createBlankTab } from './notes'
 import type { NoteTab } from '../../shared/types'
 
-export function useNoteTabs(clearMessage: () => void) {
+type EnsureTabContent = (
+  tabId: string,
+  currentTabs: NoteTab[],
+) => NoteTab[] | null | Promise<NoteTab[] | null>
+
+export function useNoteTabs(
+  clearMessage: () => void,
+  ensureTabContent?: EnsureTabContent,
+) {
   const [tabs, setTabs] = useState<NoteTab[]>(() => [createBlankTab()])
   const [activeId, setActiveId] = useState(() => tabs[0]?.id ?? '')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -39,10 +47,10 @@ export function useNoteTabs(clearMessage: () => void) {
   }, [activeId, tabs])
 
   useLayoutEffect(() => {
-    if (activeTabId) {
+    if (activeTabId && activeTab?.contentLoaded) {
       writeEditorContent(editorRef.current, activeTabContent ?? '', activeTabId)
     }
-  }, [activeTabContent, activeTabId])
+  }, [activeTab?.contentLoaded, activeTabContent, activeTabId])
 
   useLayoutEffect(() => {
     const tabBar = tabBarRef.current
@@ -68,11 +76,17 @@ export function useNoteTabs(clearMessage: () => void) {
     setActiveId(tabId)
   }
 
-  function replaceWorkingTabs(nextTabs: NoteTab[]) {
+  function replaceWorkingTabs(nextTabs: NoteTab[], nextActiveId?: string) {
     const workingTabs = nextTabs.length > 0 ? nextTabs : [createBlankTab()]
+    const nextActiveTab =
+      workingTabs.find((tab) => tab.id === nextActiveId) ?? workingTabs[0]
+
     setTabsInMemory(workingTabs)
-    setActiveTabInMemory(workingTabs[0].id)
-    writeEditorContent(editorRef.current, workingTabs[0].content, workingTabs[0].id, true)
+    setActiveTabInMemory(nextActiveTab.id)
+
+    if (nextActiveTab.contentLoaded) {
+      writeEditorContent(editorRef.current, nextActiveTab.content, nextActiveTab.id, true)
+    }
   }
 
   function resetTabs() {
@@ -82,26 +96,26 @@ export function useNoteTabs(clearMessage: () => void) {
   function commitEditorToMemory() {
     const currentTabs = tabsRef.current
     const active = currentTabs.find((tab) => tab.id === activeIdRef.current)
-    if (!active) {
+    if (!active || !active.contentLoaded) {
       return
     }
 
     const content = getEditorContent(editorRef.current)
     tabsRef.current = currentTabs.map((tab) =>
-      tab.id === active.id ? { ...tab, content } : tab,
+      tab.id === active.id ? { ...tab, content, contentLoaded: true } : tab,
     )
   }
 
   function tabsWithCurrentEditor() {
     const currentTabs = tabsRef.current
     const active = currentTabs.find((tab) => tab.id === activeIdRef.current)
-    if (!active) {
+    if (!active || !active.contentLoaded) {
       return currentTabs
     }
 
     const content = getEditorContent(editorRef.current)
     const nextTabs = currentTabs.map((tab) =>
-      tab.id === active.id ? { ...tab, content } : tab,
+      tab.id === active.id ? { ...tab, content, contentLoaded: true } : tab,
     )
     setTabsInMemory(nextTabs)
     return nextTabs
@@ -120,7 +134,7 @@ export function useNoteTabs(clearMessage: () => void) {
     doc.addEventListener('blur', commitEditorToMemory, true)
     doc.addEventListener('paste', handleEditorPaste)
 
-    if (activeTab) {
+    if (activeTab?.contentLoaded) {
       writeEditorContent(frame, activeTab.content, activeTab.id)
     }
 
@@ -147,8 +161,14 @@ export function useNoteTabs(clearMessage: () => void) {
     commitEditorToMemory()
   }
 
-  function selectTab(tabId: string) {
-    tabsWithCurrentEditor()
+  async function selectTab(tabId: string) {
+    const currentTabs = tabsWithCurrentEditor()
+    const readyTabs = await prepareTabsForActivation(tabId, currentTabs)
+    if (!readyTabs) {
+      return
+    }
+
+    setTabsInMemory(readyTabs)
     setActiveTabInMemory(tabId)
     clearMessage()
   }
@@ -160,7 +180,7 @@ export function useNoteTabs(clearMessage: () => void) {
     clearMessage()
   }
 
-  function closeTab(tabId: string) {
+  async function closeTab(tabId: string) {
     const currentTabs = tabsWithCurrentEditor()
     const closingTab = currentTabs.find((tab) => tab.id === tabId)
     if (!closingTab || !confirmTabDelete(closingTab, currentTabs.length)) {
@@ -171,11 +191,22 @@ export function useNoteTabs(clearMessage: () => void) {
     const nextTabs =
       currentTabs.length === 1 ? [createBlankTab()] : currentTabs.filter((tab) => tab.id !== tabId)
 
-    setTabsInMemory(nextTabs)
+    let workingTabs = nextTabs
+    let nextActiveId = activeIdRef.current
+
     if (activeId === tabId || currentTabs.length === 1) {
       const nextActiveIndex = Math.max(0, closingIndex - 1)
-      setActiveTabInMemory(nextTabs[nextActiveIndex]?.id ?? nextTabs[0].id)
+      nextActiveId = nextTabs[nextActiveIndex]?.id ?? nextTabs[0].id
+      const readyTabs = await prepareTabsForActivation(nextActiveId, nextTabs)
+      if (!readyTabs) {
+        return
+      }
+
+      workingTabs = readyTabs
     }
+
+    setTabsInMemory(workingTabs)
+    setActiveTabInMemory(nextActiveId)
 
     if (editingId === tabId) {
       setEditingId(null)
@@ -208,6 +239,15 @@ export function useNoteTabs(clearMessage: () => void) {
       setEditingId(null)
       setDraftTitle('')
     }
+  }
+
+  async function prepareTabsForActivation(tabId: string, currentTabs: NoteTab[]) {
+    const tab = currentTabs.find((currentTab) => currentTab.id === tabId)
+    if (!tab || tab.contentLoaded || !ensureTabContent) {
+      return currentTabs
+    }
+
+    return ensureTabContent(tabId, currentTabs)
   }
 
   return {

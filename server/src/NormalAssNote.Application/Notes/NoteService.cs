@@ -7,10 +7,39 @@ public sealed class NoteService(INoteRepository notes, IClock clock) : INoteServ
 {
     public async Task<IReadOnlyList<NoteResponse>> ListAsync(
         string userId,
+        string? contentNoteId = null,
         CancellationToken cancellationToken = default)
     {
-        var savedNotes = await notes.ListActiveAsync(userId, cancellationToken);
-        return savedNotes.Select(ToResponse).ToList();
+        var savedNotes = await notes.ListActiveSummariesAsync(userId, cancellationToken);
+        if (savedNotes.Count == 0)
+        {
+            return [];
+        }
+
+        var includedContentId = ResolveContentNoteId(savedNotes, contentNoteId);
+        var contentNote = await notes.GetActiveAsync(userId, includedContentId, cancellationToken);
+
+        return savedNotes
+            .Select(note => new NoteResponse(
+                note.Id,
+                note.Title,
+                note.Id == contentNote?.Id ? contentNote.Content : null,
+                note.SortOrder))
+            .ToList();
+    }
+
+    public async Task<NoteResponse?> GetAsync(
+        string userId,
+        string noteId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(noteId))
+        {
+            return null;
+        }
+
+        var note = await notes.GetActiveAsync(userId, noteId.Trim(), cancellationToken);
+        return note is null ? null : ToResponse(note, includeContent: true);
     }
 
     public async Task<IReadOnlyList<NoteResponse>> SyncAsync(
@@ -18,15 +47,23 @@ public sealed class NoteService(INoteRepository notes, IClock clock) : INoteServ
         NoteSyncRequest request,
         CancellationToken cancellationToken = default)
     {
-        var existing = await notes.ListAllForSyncAsync(userId, cancellationToken);
-        var existingById = existing.ToDictionary(note => note.Id, StringComparer.Ordinal);
         var now = clock.UtcNow;
         var incoming = Normalize(request.Notes);
-        var incomingIds = incoming.Select(note => note.Id).ToHashSet(StringComparer.Ordinal);
+        var deletedIds = NormalizeDeletedIds(request.DeletedNoteIds);
+        var touchedIds = incoming
+            .Select(note => note.Id)
+            .Concat(deletedIds)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var existing = await notes.ListForSyncAsync(userId, touchedIds, cancellationToken);
+        var existingById = existing.ToDictionary(note => note.Id, StringComparer.Ordinal);
 
-        foreach (var note in existing.Where(note => !incomingIds.Contains(note.Id)))
+        foreach (var noteId in deletedIds)
         {
-            note.SoftDelete(now);
+            if (existingById.TryGetValue(noteId, out var savedNote))
+            {
+                savedNote.SoftDelete(now);
+            }
         }
 
         foreach (var note in incoming)
@@ -43,7 +80,12 @@ public sealed class NoteService(INoteRepository notes, IClock clock) : INoteServ
                 existingById[note.Id] = savedNote;
             }
 
-            savedNote.Upsert(note.Title, note.Content, note.SortOrder, now);
+            savedNote.Upsert(
+                note.Title,
+                note.Content,
+                note.SortOrder,
+                now,
+                note.ContentWasProvided);
         }
 
         await notes.SaveChangesAsync(cancellationToken);
@@ -52,7 +94,7 @@ public sealed class NoteService(INoteRepository notes, IClock clock) : INoteServ
             .Select(note =>
             {
                 var savedNote = existingById[note.Id];
-                return ToResponse(savedNote);
+                return ToResponse(savedNote, includeContent: note.ContentWasProvided);
             })
             .ToList();
     }
@@ -63,11 +105,38 @@ public sealed class NoteService(INoteRepository notes, IClock clock) : INoteServ
                 string.IsNullOrWhiteSpace(note.Id) ? Guid.NewGuid().ToString("N") : note.Id.Trim(),
                 string.IsNullOrWhiteSpace(note.Title) ? NoteDefaults.Title : note.Title.Trim(),
                 note.Content ?? string.Empty,
-                index))
+                note.Content is not null,
+                note.SortOrder ?? index))
             .ToList();
 
-    private static NoteResponse ToResponse(Note note) =>
-        new(note.Id, note.Title, note.Content, note.SortOrder);
+    private static IReadOnlyList<string> NormalizeDeletedIds(IReadOnlyList<string>? noteIds) =>
+        (noteIds ?? Array.Empty<string>())
+            .Where(noteId => !string.IsNullOrWhiteSpace(noteId))
+            .Select(noteId => noteId.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
-    private sealed record NormalizedNote(string Id, string Title, string Content, int SortOrder);
+    private static string ResolveContentNoteId(
+        IReadOnlyList<NoteSummary> savedNotes,
+        string? contentNoteId)
+    {
+        var requestedId = contentNoteId?.Trim();
+        if (!string.IsNullOrWhiteSpace(requestedId) &&
+            savedNotes.Any(note => note.Id == requestedId))
+        {
+            return requestedId;
+        }
+
+        return savedNotes[0].Id;
+    }
+
+    private static NoteResponse ToResponse(Note note, bool includeContent) =>
+        new(note.Id, note.Title, includeContent ? note.Content : null, note.SortOrder);
+
+    private sealed record NormalizedNote(
+        string Id,
+        string Title,
+        string Content,
+        bool ContentWasProvided,
+        int SortOrder);
 }

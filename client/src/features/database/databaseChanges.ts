@@ -1,7 +1,10 @@
 import { DEFAULT_TITLE, MAX_CONFIRM_TAB_NAMES } from '../../shared/constants'
-import type { NoteTab } from '../../shared/types'
+import type { NoteSyncRequest, NoteTab } from '../../shared/types'
 
-type DatabaseTabSnapshot = Pick<NoteTab, 'title' | 'content'>
+type DatabaseTabSnapshot = {
+  title: string
+  content?: string
+}
 
 export type DatabaseSnapshot = Map<string, DatabaseTabSnapshot>
 
@@ -19,11 +22,27 @@ export function createDatabaseSnapshot(tabs: NoteTab[]): DatabaseSnapshot {
   for (const tab of tabs) {
     snapshot.set(tab.id, {
       title: tab.title,
-      content: tab.content,
+      ...(tab.contentLoaded ? { content: tab.content } : {}),
     })
   }
 
   return snapshot
+}
+
+export function markDatabaseSnapshotContentLoaded(
+  snapshot: DatabaseSnapshot | null,
+  tabId: string,
+  content: string,
+) {
+  const savedTab = snapshot?.get(tabId)
+  if (!savedTab) {
+    return
+  }
+
+  snapshot?.set(tabId, {
+    ...savedTab,
+    content,
+  })
 }
 
 export function getDatabaseChangeSummary(
@@ -53,7 +72,10 @@ export function getDatabaseChangeSummary(
       continue
     }
 
-    if (savedTab.title !== tab.title || savedTab.content !== tab.content) {
+    const contentChanged =
+      tab.contentLoaded && savedTab.content !== undefined && savedTab.content !== tab.content
+
+    if (savedTab.title !== tab.title || contentChanged) {
       changedTabs.push(formatTabName(tab.title))
     }
   }
@@ -87,13 +109,53 @@ export function hasDatabaseChanges(summary: DatabaseChangeSummary) {
   )
 }
 
+export function createDatabaseSyncRequest(
+  currentTabs: NoteTab[],
+  snapshot: DatabaseSnapshot | null,
+): NoteSyncRequest {
+  if (!snapshot) {
+    return {
+      notes: currentTabs.map((tab, index) => createSyncNote(tab, index, tab.contentLoaded)),
+      deletedNoteIds: [],
+    }
+  }
+
+  const currentIds = new Set<string>()
+  const notes: NoteSyncRequest['notes'] = []
+
+  currentTabs.forEach((tab, index) => {
+    currentIds.add(tab.id)
+
+    const savedTab = snapshot.get(tab.id)
+    if (!savedTab) {
+      notes.push(createSyncNote(tab, index, true))
+      return
+    }
+
+    const titleChanged = savedTab.title !== tab.title
+    const contentChanged =
+      tab.contentLoaded && savedTab.content !== undefined && savedTab.content !== tab.content
+
+    if (titleChanged || contentChanged) {
+      notes.push(createSyncNote(tab, index, contentChanged))
+    }
+  })
+
+  const deletedNoteIds = Array.from(snapshot.keys()).filter((tabId) => !currentIds.has(tabId))
+
+  return {
+    notes,
+    deletedNoteIds,
+  }
+}
+
 export function formatDatabaseSaveConfirmation(summary: DatabaseChangeSummary) {
   if (!summary.snapshotKnown) {
     return [
       'No database copy has been loaded this session.',
       'Save current tabs to database?',
       '',
-      'This will replace database notes with the current tab set.',
+      'Other database notes will be left unchanged.',
       '',
       ...formatTabGroup('Tabs to save', summary.currentTabs, '*'),
     ].join('\n')
@@ -106,6 +168,15 @@ export function formatDatabaseSaveConfirmation(summary: DatabaseChangeSummary) {
     ...formatTabGroup('Changed tabs', summary.changedTabs, '~'),
     ...formatTabGroup('Deleted tabs', summary.deletedTabs, '-'),
   ].join('\n')
+}
+
+function createSyncNote(tab: NoteTab, sortOrder: number, includeContent: boolean) {
+  return {
+    id: tab.id,
+    title: tab.title,
+    sortOrder,
+    ...(includeContent ? { content: tab.content } : {}),
+  }
 }
 
 function formatTabGroup(label: string, tabNames: string[], prefix: string) {

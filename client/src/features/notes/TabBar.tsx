@@ -7,12 +7,12 @@ type TabBarProps = {
   editingId: string | null
   tabBarRef: Ref<HTMLElement>
   tabs: NoteTab[]
-  onCloseTab: (tabId: string) => void
+  onCloseTab: (tabId: string) => void | Promise<void>
   onCreateTab: () => void
   onDraftTitleChange: (title: string) => void
   onFinishRename: (tabId: string) => void
   onRenameKeyDown: (event: KeyboardEvent<HTMLInputElement>, tab: NoteTab) => void
-  onSelectTab: (tabId: string) => void
+  onSelectTab: (tabId: string) => void | Promise<void>
   onStartRename: (tab: NoteTab) => void
 }
 
@@ -49,7 +49,7 @@ export function TabBar({
             <button
               aria-current={tab.id === activeId ? 'page' : undefined}
               className="tab-title"
-              onClick={() => onSelectTab(tab.id)}
+              onClick={() => void onSelectTab(tab.id)}
               onDoubleClick={() => onStartRename(tab)}
               type="button"
             >
@@ -58,7 +58,7 @@ export function TabBar({
             <button
               aria-label={`close ${tab.title}`}
               className="tab-close"
-              onClick={() => onCloseTab(tab.id)}
+              onClick={() => void onCloseTab(tab.id)}
               type="button"
             >
               X

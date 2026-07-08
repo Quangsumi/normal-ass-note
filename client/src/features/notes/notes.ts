@@ -6,6 +6,7 @@ export function createBlankTab(): NoteTab {
     id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
     title: DEFAULT_TITLE,
     content: '',
+    contentLoaded: true,
   }
 }
 
@@ -14,10 +15,11 @@ export function fromSavedNote(note: SavedNote): NoteTab {
     id: note.id,
     title: note.title || DEFAULT_TITLE,
     content: normalizeContent(note.content),
+    contentLoaded: note.content != null,
   }
 }
 
-export function normalizeContent(content: string | undefined) {
+export function normalizeContent(content: string | null | undefined) {
   if (!content) {
     return ''
   }

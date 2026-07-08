@@ -11,10 +11,19 @@ public sealed class Note
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
 
-    public void Upsert(string title, string content, int sortOrder, DateTimeOffset now)
+    public void Upsert(
+        string title,
+        string? content,
+        int sortOrder,
+        DateTimeOffset now,
+        bool updateContent)
     {
         Title = string.IsNullOrWhiteSpace(title) ? NoteDefaults.Title : title.Trim();
-        Content = content;
+        if (updateContent)
+        {
+            Content = content ?? string.Empty;
+        }
+
         SortOrder = sortOrder;
         UpdatedAt = now;
         DeletedAt = null;

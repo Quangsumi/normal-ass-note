@@ -11,6 +11,7 @@ public static class NoteEndpoints
         var notes = app.MapGroup("/api/notes").RequireAuthorization();
 
         notes.MapGet("", ListAsync);
+        notes.MapGet("/{noteId}", GetAsync);
         notes.MapPost("/sync", SyncAsync);
 
         return app;
@@ -19,10 +20,24 @@ public static class NoteEndpoints
     private static async Task<IResult> ListAsync(
         ClaimsPrincipal principal,
         INoteService notes,
+        string? contentNoteId,
         CancellationToken cancellationToken)
     {
-        var savedNotes = await notes.ListAsync(principal.UserId(), cancellationToken);
+        var savedNotes = await notes.ListAsync(
+            principal.UserId(),
+            contentNoteId,
+            cancellationToken);
         return Results.Ok(savedNotes);
+    }
+
+    private static async Task<IResult> GetAsync(
+        string noteId,
+        ClaimsPrincipal principal,
+        INoteService notes,
+        CancellationToken cancellationToken)
+    {
+        var savedNote = await notes.GetAsync(principal.UserId(), noteId, cancellationToken);
+        return savedNote is null ? Results.NotFound() : Results.Ok(savedNote);
     }
 
     private static async Task<IResult> SyncAsync(

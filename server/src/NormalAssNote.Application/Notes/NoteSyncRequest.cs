@@ -1,3 +1,5 @@
 namespace NormalAssNote.Application.Notes;
 
-public sealed record NoteSyncRequest(IReadOnlyList<NoteInput>? Notes);
+public sealed record NoteSyncRequest(
+    IReadOnlyList<NoteInput>? Notes,
+    IReadOnlyList<string>? DeletedNoteIds);

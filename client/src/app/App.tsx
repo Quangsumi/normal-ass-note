@@ -8,13 +8,15 @@ import { TabBar } from '../features/notes/TabBar'
 import { API_BASE, EDITOR_DOCUMENT } from '../shared/constants'
 import {
   createDatabaseSnapshot,
+  createDatabaseSyncRequest,
   formatDatabaseSaveConfirmation,
   getDatabaseChangeSummary,
   hasDatabaseChanges,
+  markDatabaseSnapshotContentLoaded,
 } from '../features/database/databaseChanges'
 import type { DatabaseSnapshot } from '../features/database/databaseChanges'
 import { useNoteTabs } from '../features/notes/useNoteTabs'
-import { fromSavedNote } from '../features/notes/notes'
+import { fromSavedNote, normalizeContent } from '../features/notes/notes'
 import type {
   AuthFormState,
   AuthMode,
@@ -59,7 +61,7 @@ function App() {
     tabBarRef,
     tabs,
     tabsWithCurrentEditor,
-  } = useNoteTabs(() => setMessage(''))
+  } = useNoteTabs(() => setMessage(''), ensureDatabaseTabContent)
 
   useEffect(() => {
     if (!auth) {
@@ -101,8 +103,11 @@ function App() {
 
   async function fetchDatabaseNotes(token: string) {
     setMessage('loading database notes')
+    const contentNoteQuery = activeId
+      ? `?contentNoteId=${encodeURIComponent(activeId)}`
+      : ''
 
-    const response = await apiRequest('/notes', {
+    const response = await apiRequest(`/notes${contentNoteQuery}`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -119,12 +124,61 @@ function App() {
 
     const savedNotes = (await response.json()) as SavedNote[]
     const nextTabs = savedNotes.map(fromSavedNote)
+    const nextActiveId =
+      nextTabs.find((tab) => tab.id === activeId && tab.contentLoaded)?.id ??
+      nextTabs.find((tab) => tab.contentLoaded)?.id
+
     databaseSnapshotRef.current = createDatabaseSnapshot(nextTabs)
-    replaceWorkingTabs(nextTabs)
+    replaceWorkingTabs(nextTabs, nextActiveId)
     setMessage(
       nextTabs.length === 0
         ? 'database has no notes yet'
         : `loaded ${nextTabs.length} note${nextTabs.length === 1 ? '' : 's'} from database`,
+    )
+  }
+
+  async function ensureDatabaseTabContent(tabId: string, currentTabs: NoteTab[]) {
+    const targetTab = currentTabs.find((tab) => tab.id === tabId)
+    if (!targetTab || targetTab.contentLoaded) {
+      return currentTabs
+    }
+
+    if (!auth) {
+      setShowAuth(true)
+      setMessage('login or register to load note content')
+      return null
+    }
+
+    setMessage('loading note content')
+
+    const response = await apiRequest(`/notes/${encodeURIComponent(tabId)}`, {
+      headers: {
+        Authorization: `Bearer ${auth.token}`,
+      },
+    })
+
+    if (!response) {
+      setMessage(`database load failed: API not reachable at ${API_BASE}`)
+      return null
+    }
+
+    if (!(await handleDatabaseResponse(response))) {
+      return null
+    }
+
+    const savedNote = (await response.json()) as SavedNote
+    const content = normalizeContent(savedNote.content)
+
+    markDatabaseSnapshotContentLoaded(databaseSnapshotRef.current, tabId, content)
+
+    return currentTabs.map((tab) =>
+      tab.id === tabId
+        ? {
+            ...tab,
+            content,
+            contentLoaded: true,
+          }
+        : tab,
     )
   }
 
@@ -146,6 +200,7 @@ function App() {
 
   async function syncDatabaseNotes(token: string, nextTabs: NoteTab[]) {
     setMessage('saving to database')
+    const syncRequest = createDatabaseSyncRequest(nextTabs, databaseSnapshotRef.current)
 
     const response = await apiRequest('/notes/sync', {
       method: 'POST',
@@ -153,7 +208,7 @@ function App() {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ notes: nextTabs }),
+      body: JSON.stringify(syncRequest),
     })
 
     if (!response) {
@@ -166,10 +221,11 @@ function App() {
     }
 
     const savedNotes = (await response.json()) as SavedNote[]
-    const syncedTabs = savedNotes.map(fromSavedNote)
+    const syncedTabs = mergeSyncedNotes(nextTabs, savedNotes, syncRequest.deletedNoteIds)
     databaseSnapshotRef.current = createDatabaseSnapshot(syncedTabs)
     setTabsInMemory(syncedTabs)
-    setMessage(`saved ${syncedTabs.length} note${syncedTabs.length === 1 ? '' : 's'} to database`)
+    const changeCount = syncRequest.notes.length + syncRequest.deletedNoteIds.length
+    setMessage(`saved ${changeCount} database change${changeCount === 1 ? '' : 's'}`)
   }
 
   async function handleDatabaseResponse(response: Response) {
@@ -291,6 +347,38 @@ function createAuthPayload(authMode: AuthMode, authForm: AuthFormState) {
     userName: authForm.userName,
     password: authForm.password,
   }
+}
+
+function mergeSyncedNotes(
+  currentTabs: NoteTab[],
+  savedNotes: SavedNote[],
+  deletedNoteIds: string[],
+) {
+  const deletedIds = new Set(deletedNoteIds)
+  const savedById = new Map(savedNotes.map((note) => [note.id, note]))
+
+  return currentTabs
+    .filter((tab) => !deletedIds.has(tab.id))
+    .map((tab) => {
+      const savedNote = savedById.get(tab.id)
+      if (!savedNote) {
+        return tab
+      }
+
+      if (savedNote.content == null) {
+        return {
+          ...tab,
+          title: savedNote.title || tab.title,
+        }
+      }
+
+      return {
+        ...tab,
+        title: savedNote.title || tab.title,
+        content: normalizeContent(savedNote.content),
+        contentLoaded: true,
+      }
+    })
 }
 
 export default App

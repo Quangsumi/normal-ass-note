@@ -2,6 +2,7 @@ export type NoteTab = {
   id: string
   title: string
   content: string
+  contentLoaded: boolean
 }
 
 export type AuthState = {
@@ -17,4 +18,21 @@ export type AuthFormState = {
 
 export type AuthMode = 'login' | 'register'
 export type DatabaseAction = 'save' | 'load'
-export type SavedNote = NoteTab
+export type SavedNote = {
+  id: string
+  title: string
+  content?: string | null
+  sortOrder?: number
+}
+
+export type NoteSyncInput = {
+  id: string
+  title: string
+  content?: string
+  sortOrder: number
+}
+
+export type NoteSyncRequest = {
+  notes: NoteSyncInput[]
+  deletedNoteIds: string[]
+}
