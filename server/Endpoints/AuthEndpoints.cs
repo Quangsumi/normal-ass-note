@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
+using NormalAssNote.Api.Security;
 using NormalAssNote.Application.Authentication;
 using System.Security.Claims;
 
@@ -13,7 +14,7 @@ public static class AuthEndpoints
     {
         app.MapGet("/api/auth/session", SessionAsync).AllowAnonymous();
         app.MapGet("/api/auth/login", LoginChallenge).AllowAnonymous();
-        app.MapPost("/api/auth/logout", Logout).RequireAuthorization("BrowserCookie");
+        app.MapPost("/api/auth/logout", Logout).RequireAuthorization("BrowserCookie").RequireValidAntiforgeryToken();
         app.MapGet("/api/auth/me", MeAsync).RequireAuthorization("BrowserCookie");
 
         app.MapPost("/api/legacy/auth/login", LegacyLoginAsync).AllowAnonymous();
