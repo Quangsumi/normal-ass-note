@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using NormalAssNote.Application.Authentication;
 using System.Security.Claims;
@@ -10,6 +11,7 @@ public static class AuthEndpoints
     private const string KeycloakOidc = "keycloak";
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/auth/session", SessionAsync).AllowAnonymous();
         app.MapGet("/api/auth/login", LoginChallenge).AllowAnonymous();
         app.MapPost("/api/auth/logout", Logout).RequireAuthorization("BrowserCookie");
         app.MapGet("/api/auth/me", MeAsync).RequireAuthorization("BrowserCookie");
@@ -22,10 +24,79 @@ public static class AuthEndpoints
         return app;
     }
 
+    /// <summary>
+    /// React calls this on startup and whenever it wants to revalidate the current browser session.
+    /// It intentionally returns 200 for both authenticated and anonymous
+    /// sessions. React should inspect the "authenticated" property rather
+    /// than treating anonymous startup as an error.
+    /// </summary>
+    private static async Task<IResult> SessionAsync(ClaimsPrincipal user, HttpContext httpContext, IAntiforgery antiforgery, IWebHostEnvironment environment)
+    {
+        var tokenSet = antiforgery.GetAndStoreTokens(httpContext);
+
+        var requestToken = tokenSet.RequestToken;
+
+        if (string.IsNullOrWhiteSpace(requestToken))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status500InternalServerError, title: "Antiforgery token generation failed");
+        }
+
+        httpContext.Response.Headers.CacheControl = "no-store, no-cache";
+        httpContext.Response.Headers.Pragma = "no-cache";
+
+        var isAuthenticated = user.Identity?.IsAuthenticated == true;
+
+        if (!isAuthenticated)
+        {
+            return Results.Ok(new
+            {
+                authenticated = false,
+                csrfToken = requestToken
+            });
+        }
+
+        var applicationUserId = user.FindFirstValue(AppClaimTypes.UserId);
+
+        if (string.IsNullOrWhiteSpace(applicationUserId))
+        {
+            return Results.Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "The authenticated session has no local user mapping");
+        }
+
+        var username = user.FindFirstValue("preferred_username") ?? user.Identity?.Name ?? "unknown";
+        var displayName = user.FindFirstValue("name") ?? username;
+
+        object? debug = null;
+
+        if (environment.IsDevelopment())
+        {
+            var cookieAuthentication = await httpContext.AuthenticateAsync(AppCookie);
+
+            debug = new
+            {
+                issuer = user.FindFirstValue("iss"),
+                subject = user.FindFirstValue("sub"),
+                sessionId = user.FindFirstValue("sid"),
+                appUserId = applicationUserId,
+                cookieExpiresAtUtc = cookieAuthentication.Properties?.ExpiresUtc
+            };
+        }
+
+        return Results.Ok(new
+        {
+            authenticated = true,
+            userName = username,
+            displayName,
+            email = user.FindFirstValue("email"),
+            csrfToken = requestToken,
+            debug
+        });
+    }
+
     private static IResult LoginChallenge(string? returnUrl = "/")
     {
-        if (string.IsNullOrWhiteSpace(returnUrl)
-            || !IsLocalUrl(returnUrl))
+        if (string.IsNullOrWhiteSpace(returnUrl) || !IsLocalUrl(returnUrl))
         {
             returnUrl = "/";
         }

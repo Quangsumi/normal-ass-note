@@ -1,6 +1,7 @@
-using System.Security.Claims;
 using NormalAssNote.Api.Auth;
+using NormalAssNote.Api.Security;
 using NormalAssNote.Application.Notes;
+using System.Security.Claims;
 
 namespace NormalAssNote.Api.Endpoints;
 
@@ -15,7 +16,7 @@ public static class NoteEndpoints
 
         browserNotes.MapGet("", ListAsync);
         browserNotes.MapGet("/{noteId}", GetAsync);
-        browserNotes.MapPost("/sync", SyncAsync);
+        browserNotes.MapPost("/sync", SyncAsync).RequireValidAntiforgeryToken();
 
         // Temporary old application-JWT API.
         var legacyNotes = app
