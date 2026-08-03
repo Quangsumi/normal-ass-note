@@ -36,16 +36,16 @@ app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
 app.MapAuthEndpoints();
 app.MapNoteEndpoints();
 
-app.MapFallback(async context =>
-{
-    if (context.Request.Path.StartsWithSegments("/api"))
-    {
-        context.Response.StatusCode = StatusCodes.Status404NotFound;
-        return;
-    }
+// app.MapFallback(async context =>
+// {
+//     if (context.Request.Path.StartsWithSegments("/api"))
+//     {
+//         context.Response.StatusCode = StatusCodes.Status404NotFound;
+//         return;
+//     }
 
-    context.Response.ContentType = "text/html; charset=utf-8";
-    await context.Response.SendFileAsync(indexPath);
-});
+//     context.Response.ContentType = "text/html; charset=utf-8";
+//     await context.Response.SendFileAsync(indexPath);
+// });
 
 await app.RunAsync();

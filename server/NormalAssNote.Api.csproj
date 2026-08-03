@@ -9,6 +9,7 @@
     <FrontendBuildOutputPath>$(MSBuildProjectDirectory)\wwwroot\</FrontendBuildOutputPath>
     <NpmCommand Condition="'$(OS)' == 'Windows_NT'">npm.cmd</NpmCommand>
     <NpmCommand Condition="'$(OS)' != 'Windows_NT'">npm</NpmCommand>
+    <UserSecretsId>b030f9ef-92b8-49aa-829d-0ff49f82346f</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -41,9 +42,7 @@
     <ItemGroup>
       <FrontendDistFiles Include="$(FrontendDistPath)**\*" />
     </ItemGroup>
-    <Copy
-      SourceFiles="@(FrontendDistFiles)"
-      DestinationFiles="@(FrontendDistFiles->'$(FrontendBuildOutputPath)%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(FrontendDistFiles)" DestinationFiles="@(FrontendDistFiles->'$(FrontendBuildOutputPath)%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 
 </Project>

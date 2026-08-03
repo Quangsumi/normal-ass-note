@@ -8,11 +8,23 @@ public static class NoteEndpoints
 {
     public static IEndpointRouteBuilder MapNoteEndpoints(this IEndpointRouteBuilder app)
     {
-        var notes = app.MapGroup("/api/notes").RequireAuthorization();
+        // New browser/OIDC application-cookie API.
+        var browserNotes = app
+            .MapGroup("/api/notes")
+            .RequireAuthorization("BrowserCookie");
 
-        notes.MapGet("", ListAsync);
-        notes.MapGet("/{noteId}", GetAsync);
-        notes.MapPost("/sync", SyncAsync);
+        browserNotes.MapGet("", ListAsync);
+        browserNotes.MapGet("/{noteId}", GetAsync);
+        browserNotes.MapPost("/sync", SyncAsync);
+
+        // Temporary old application-JWT API.
+        var legacyNotes = app
+            .MapGroup("/api/legacy/notes")
+            .RequireAuthorization("LegacyBearer");
+
+        legacyNotes.MapGet("", ListAsync);
+        legacyNotes.MapGet("/{noteId}", GetAsync);
+        legacyNotes.MapPost("/sync", SyncAsync);
 
         return app;
     }
