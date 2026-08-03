@@ -23,7 +23,7 @@ public sealed class NoteService(INoteRepository notes, IClock clock) : INoteServ
             .Select(note => new NoteResponse(
                 note.Id,
                 note.Title,
-                note.Id == contentNote?.Id ? contentNote.Content : null,
+                note.Id == contentNote?.Id ? contentNote.GetContent() : null,
                 note.SortOrder))
             .ToList();
     }
@@ -131,7 +131,7 @@ public sealed class NoteService(INoteRepository notes, IClock clock) : INoteServ
     }
 
     private static NoteResponse ToResponse(Note note, bool includeContent) =>
-        new(note.Id, note.Title, includeContent ? note.Content : null, note.SortOrder);
+        new(note.Id, note.Title, includeContent ? note.GetContent() : null, note.SortOrder);
 
     private sealed record NormalizedNote(
         string Id,

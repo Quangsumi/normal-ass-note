@@ -28,6 +28,7 @@ internal sealed class NoteRepository(AppDbContext db) : INoteRepository
         CancellationToken cancellationToken = default) =>
         await db.Notes
             .AsNoTracking()
+            .Include(note => note.Content)
             .Where(note => note.UserId == userId && note.Id == noteId)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -43,6 +44,7 @@ internal sealed class NoteRepository(AppDbContext db) : INoteRepository
 
         return await db.Notes
             .IgnoreQueryFilters()
+            .Include(note => note.Content)
             .Where(note => note.UserId == userId && noteIds.Contains(note.Id))
             .ToListAsync(cancellationToken);
     }

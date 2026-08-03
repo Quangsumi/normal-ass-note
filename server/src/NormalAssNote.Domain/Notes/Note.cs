@@ -5,7 +5,7 @@ public sealed class Note
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string UserId { get; set; } = string.Empty;
     public string Title { get; set; } = NoteDefaults.Title;
-    public string Content { get; set; } = string.Empty;
+    public NoteContent? Content { get; set; }
     public int SortOrder { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
@@ -19,9 +19,10 @@ public sealed class Note
         bool updateContent)
     {
         Title = string.IsNullOrWhiteSpace(title) ? NoteDefaults.Title : title.Trim();
+        EnsureContent();
         if (updateContent)
         {
-            Content = content ?? string.Empty;
+            Content!.Value = content ?? string.Empty;
         }
 
         SortOrder = sortOrder;
@@ -38,5 +39,18 @@ public sealed class Note
 
         DeletedAt = now;
         UpdatedAt = now;
+    }
+
+    public string GetContent() => Content?.Value ?? string.Empty;
+
+    private void EnsureContent()
+    {
+        if (Content is null)
+        {
+            Content = new NoteContent
+            {
+                NoteId = Id
+            };
+        }
     }
 }
