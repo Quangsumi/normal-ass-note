@@ -12,6 +12,10 @@ public static class AuthEndpoints
     private const string KeycloakOidc = "keycloak";
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
+        // logout
+        //      POST because GET could triggered by a preview link, external image, ...
+        //      RP-initiated: logout both app and keycloak, 
+
         app.MapGet("/api/auth/session", SessionAsync).AllowAnonymous();
         app.MapGet("/api/auth/login", LoginChallenge).AllowAnonymous();
         app.MapPost("/api/auth/logout", Logout).RequireAuthorization("BrowserCookie").RequireValidAntiforgeryToken();

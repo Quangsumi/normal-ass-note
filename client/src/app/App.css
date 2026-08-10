@@ -41,9 +41,14 @@ input {
 
 .save-panel {
   align-items: stretch;
+  background: rgb(255 255 255 / 94%);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  max-height: calc(100vh - 8px);
+  max-width: min(22rem, calc(100vw - 8px));
+  overflow-y: auto;
   padding: 4px;
   position: fixed;
   right: 0;
@@ -52,19 +57,43 @@ input {
   z-index: 2;
 }
 
+.database-actions,
+.auth-method,
 .save-panel form {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-width: 16rem;
+}
+
+.auth-method {
+  border: 1px solid #aaa;
+  margin: 0;
+  min-width: 0;
+  padding: 6px;
+}
+
+.auth-method.active {
+  border-color: #146c43;
+  box-shadow: inset 0 0 0 1px #146c43;
+}
+
+.auth-method legend {
+  font-weight: 600;
+}
+
+.save-panel form {
+  max-width: 20rem;
 }
 
 .save-panel input {
+  box-sizing: border-box;
+  min-width: 0;
   user-select: text;
+  width: 100%;
 }
 
 .message {
-  max-width: 16rem;
+  max-width: 20rem;
   overflow-wrap: anywhere;
 }
 

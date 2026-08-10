@@ -24,20 +24,21 @@ builder.Services.AddAntiforgery(options =>
     /*
      POST /api/notes/sync
     Cookie: __Host-normal-ass-note-v1=...
-    Cookie: __Host-normal-ass-note-v1-antiforgery=...
+    Cookie: __Host-normal-ass-note-v1-antiforgery=... Why do we need this cookie? -> this cookie and the request token is a pair. 
+                                                      Request token bind to this cookie. This Cookie prove the request token is valid and identify the browser session
     X-CSRF-TOKEN: REQUEST-TOKEN-HERE
     Content-Type: application/json
      */
 
-    // React sends the request token using this header for JSON requests.
+    // React sends the request token using this header for JSON requests (ex: /notes/sync)
     options.HeaderName = "X-CSRF-TOKEN";
 
-    // A real HTML logout form can submit the same request token here.
+    // A real HTML form sending form-bound data will include request token in the form (ex: auth/logout/)
     options.FormFieldName = "__RequestVerificationToken";
 
     // React receives the request token from /api/auth/session, so it never
     // needs to read the antiforgery cookie.
-    options.Cookie.Name = "__Host-normal-ass-note-v1-antiforgery";
+    options.Cookie.Name = "__Host-normal-ass-note-v1-antiforgery";    
 
     options.Cookie.HttpOnly = true;
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
@@ -68,16 +69,16 @@ app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
 app.MapAuthEndpoints();
 app.MapNoteEndpoints();
 
-// app.MapFallback(async context =>
-// {
-//     if (context.Request.Path.StartsWithSegments("/api"))
-//     {
-//         context.Response.StatusCode = StatusCodes.Status404NotFound;
-//         return;
-//     }
+app.MapFallback(async context =>
+{
+    if (context.Request.Path.StartsWithSegments("/api"))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
 
-//     context.Response.ContentType = "text/html; charset=utf-8";
-//     await context.Response.SendFileAsync(indexPath);
-// });
+    context.Response.ContentType = "text/html; charset=utf-8";
+    await context.Response.SendFileAsync(indexPath);
+});
 
 await app.RunAsync();
