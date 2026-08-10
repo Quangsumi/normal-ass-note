@@ -38,7 +38,7 @@ builder.Services.AddAntiforgery(options =>
 
     // React receives the request token from /api/auth/session, so it never
     // needs to read the antiforgery cookie.
-    options.Cookie.Name = "__Host-normal-ass-note-v1-antiforgery";    
+    options.Cookie.Name = "__Host-normal-ass-note-v1-antiforgery-session";    
 
     options.Cookie.HttpOnly = true;
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;

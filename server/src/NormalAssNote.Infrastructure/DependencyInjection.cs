@@ -1,6 +1,6 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +16,7 @@ using NormalAssNote.Infrastructure.Identity;
 using NormalAssNote.Infrastructure.Notes;
 using NormalAssNote.Infrastructure.Persistence;
 using System.Security.Claims;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
 namespace NormalAssNote.Infrastructure;
@@ -33,6 +34,40 @@ public static class DependencyInjection
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(connectionString));
 
+        #region Data Protection Certificate, used to encrypt/decrypt Data Protection Key Rings
+        //var certificatePath = configuration["DataProtection:CertificatePath"] 
+        //    ?? throw new InvalidOperationException("DataProtection:CertificatePath is required.");
+
+        //var certificatePasswordFile = configuration["DataProtection:CertificatePasswordFile"]
+        //    ?? throw new InvalidOperationException("DataProtection:CertificatePasswordFile is required.");
+
+        //if (!File.Exists(certificatePath))
+        //{
+        //    throw new InvalidOperationException($"Data Protection certificate was not found at '{certificatePath}'.");
+        //}
+
+        //if (!File.Exists(certificatePasswordFile))
+        //{
+        //    throw new InvalidOperationException($"Data Protection certificate password file was not found at " + $"'{certificatePasswordFile}'.");
+        //}
+
+        //var certificatePassword = File.ReadAllText(certificatePasswordFile).TrimEnd('\r', '\n');
+
+        //var dataProtectionCertificate = X509CertificateLoader.LoadPkcs12FromFile(certificatePath, certificatePassword, X509KeyStorageFlags.EphemeralKeySet);
+
+        //if (!dataProtectionCertificate.HasPrivateKey)
+        //{
+        //    throw new InvalidOperationException("The Data Protection certificate does not contain a private key.");
+        //}
+        #endregion
+
+        services.AddDataProtection()
+            .SetApplicationName("normal-ass-note-v1")  // Must be identical across all replicas.
+                                                       // It participates in cryptographic isolation in cookies, antiforgery, database tickets, ...
+                                                       // Changing it invalidates all existing cookies and antiforgery tokens.
+            .PersistKeysToDbContext<AppDbContext>();
+            //.ProtectKeysWithCertificate(dataProtectionCertificate);  // Wrap/encrypt data protection key ring using this X.509 certificate.
+
         services.AddIdentityCore<ApplicationUser>(options =>
             {
                 options.User.RequireUniqueEmail = false;
@@ -44,11 +79,15 @@ public static class DependencyInjection
             })
             .AddEntityFrameworkStores<AppDbContext>();
 
-        services.AddAuthenticationServices(configuration);
+        services.AddSingleton<IClock, SystemClock>();
 
+        services.AddSingleton<PostgresTicketStore>(); // move to RedisTicketStore for better performance or use Postgres Caching feature
+        services.AddHostedService<AuthenticationSessionCleanupService>();
+        
+        services.AddAuthenticationServices(configuration);
+        
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<INoteRepository, NoteRepository>();
-        services.AddSingleton<IClock, SystemClock>();
 
         return services;
     }
@@ -121,7 +160,7 @@ public static class DependencyInjection
             })
             .AddCookie(AppCookie, options =>
             {
-                options.Cookie.Name = "__Host-normal-ass-note-v1";
+                options.Cookie.Name = "__Host-normal-ass-note-v1-session";
                 options.Cookie.HttpOnly = true;
                 options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
                 options.Cookie.SameSite = SameSiteMode.Lax;
@@ -283,7 +322,7 @@ public static class DependencyInjection
                     {
                         var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("NormalAssNote.OidcUserMapping");
 
-                        logger.LogError(exception,"OIDC authentication succeeded, but local user mapping failed.");
+                        logger.LogError(exception, "OIDC authentication succeeded, but local user mapping failed.");
 
                         context.Fail("The OIDC identity could not be linked to a local note account.");
                     }
@@ -303,6 +342,12 @@ public static class DependencyInjection
                         IssuerSigningKey = signingKey,
                         ClockSkew = TimeSpan.FromMinutes(1)
                     };
+            });
+        
+        services.AddOptions<CookieAuthenticationOptions>(AppCookie)
+            .Configure<PostgresTicketStore>((options, ticketStore) =>
+            {
+                options.SessionStore = ticketStore;
             });
 
         services.AddAuthorization(options =>
