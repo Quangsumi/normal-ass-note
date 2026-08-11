@@ -67,6 +67,7 @@ app.UseAuthorization();
 
 app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
 app.MapAuthEndpoints();
+app.MapOidcLogoutEndpoints();
 app.MapNoteEndpoints();
 
 app.MapFallback(async context =>

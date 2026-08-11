@@ -66,7 +66,7 @@ public static class DependencyInjection
                                                        // It participates in cryptographic isolation in cookies, antiforgery, database tickets, ...
                                                        // Changing it invalidates all existing cookies and antiforgery tokens.
             .PersistKeysToDbContext<AppDbContext>();
-            //.ProtectKeysWithCertificate(dataProtectionCertificate);  // Wrap/encrypt data protection key ring using this X.509 certificate.
+            //.ProtectKeysWithCertificate(dataProtectionCertificate);  // TODO: Wrap/encrypt data protection key ring using this X.509 certificate.
 
         services.AddIdentityCore<ApplicationUser>(options =>
             {
@@ -81,9 +81,12 @@ public static class DependencyInjection
 
         services.AddSingleton<IClock, SystemClock>();
 
-        services.AddSingleton<PostgresTicketStore>(); // move to RedisTicketStore for better performance or use Postgres Caching feature
+        services.AddSingleton<PostgresTicketStore>(); // TODO: move to RedisTicketStore for better performance or use Postgres Caching feature
         services.AddHostedService<AuthenticationSessionCleanupService>();
-        
+
+        services.AddScoped<IOidcLogoutTokenValidator, OidcLogoutTokenValidator>();
+        services.AddScoped<IOidcSessionRevoker, OidcSessionRevoker>();
+
         services.AddAuthenticationServices(configuration);
         
         services.AddScoped<IAuthService, AuthService>();
@@ -118,10 +121,12 @@ public static class DependencyInjection
 
         if (string.IsNullOrWhiteSpace(oidcOptions.Authority)
             || string.IsNullOrWhiteSpace(oidcOptions.ClientId)
-            || string.IsNullOrWhiteSpace(oidcOptions.ClientSecret))
+            || string.IsNullOrWhiteSpace(oidcOptions.ClientSecret)
+            || oidcOptions.AllowedLogoutTokenAlgorithms is not { Length: > 0 }
+            || oidcOptions.AllowedLogoutTokenAlgorithms.Any(string.IsNullOrWhiteSpace))
         {
-            throw new InvalidOperationException(
-                "Oidc:Authority, Oidc:ClientId, and Oidc:ClientSecret are required.");
+            throw new InvalidOperationException("Oidc:Authority, Oidc:ClientId, " + "Oidc:ClientSecret, and at least one " 
+                + "Oidc:AllowedLogoutTokenAlgorithms value " + "are required.");
         }
 
         if (!Uri.TryCreate(
@@ -218,7 +223,13 @@ public static class DependencyInjection
 
                 options.CallbackPath = "/signin-oidc";
                 options.SignedOutCallbackPath = "/signout-callback-oidc";
-                options.RemoteSignOutPath = "/oidc/frontchannel-logout";
+
+                /*
+                 * Disable ASP.NET's cookie-dependent RemoteSignOutPath.
+                 * we use endpoint to revokes the PostgreSQL session using (iss, sid).
+                 */
+                options.RemoteSignOutPath = PathString.Empty;
+                // options.RemoteSignOutPath = "/oidc/frontchannel-logout";
 
                 options.TokenValidationParameters.NameClaimType = "preferred_username";
 

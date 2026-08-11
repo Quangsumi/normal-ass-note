@@ -15,5 +15,12 @@
         /// false: Do not create a new local user automatically. Reject the login until an administrator explicitly links the Keycloak identity to a local user.
         /// </summary>
         public bool AllowAutomaticUserProvisioning { get; init; }
+
+        /// <summary>
+        /// JWS algorithms accepted for OIDC Back-Channel Logout Tokens.
+        /// Keycloak uses RS256 by default. Keep this aligned with the
+        /// client's configured ID-token signature algorithm.
+        /// </summary>
+        public string[] AllowedLogoutTokenAlgorithms { get; init; } = ["RS256"];
     }
 }

@@ -36,20 +36,32 @@ internal sealed class AuthenticationSessionCleanupService(IServiceScopeFactory s
         }
     }
 
-    private async Task DeleteExpiredSessionsAsync(CancellationToken cancellationToken)
+    private async Task DeleteExpiredSessionsAsync(
+    CancellationToken cancellationToken)
     {
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-            var deletedCount = await db.AuthenticationSessions
-                .Where(session => session.ExpiresAtUtc <= clock.UtcNow)
+            var now = clock.UtcNow;
+
+            var deletedSessionCount = await db.AuthenticationSessions
+                .Where(session => session.ExpiresAtUtc <= now)
                 .ExecuteDeleteAsync(cancellationToken);
 
-            if (deletedCount > 0)
+            var deletedReplayCount = await db.OidcLogoutTokenReplays
+                    .Where(replay => replay.ExpiresAtUtc <= now)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+            if (deletedSessionCount > 0)
             {
-                logger.LogInformation("Deleted {SessionCount} expired authentication sessions.", deletedCount);
+                logger.LogInformation("Deleted {SessionCount} expired " + "authentication sessions.", deletedSessionCount);
+            }
+
+            if (deletedReplayCount > 0)
+            {
+                logger.LogInformation("Deleted {ReplayCount} expired OIDC " + "logout-token replay records.", deletedReplayCount);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -58,7 +70,7 @@ internal sealed class AuthenticationSessionCleanupService(IServiceScopeFactory s
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "Failed to delete expired authentication sessions.");
+            logger.LogError(exception, "Failed to delete expired authentication " + "or OIDC replay records.");
         }
     }
 }

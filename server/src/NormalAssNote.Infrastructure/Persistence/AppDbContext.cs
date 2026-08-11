@@ -21,6 +21,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     /// </summary>
     public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
 
+    internal DbSet<OidcLogoutTokenReplay> OidcLogoutTokenReplays => Set<OidcLogoutTokenReplay>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -88,6 +90,22 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                 .WithMany()
                 .HasForeignKey(session => session.ApplicationUserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<OidcLogoutTokenReplay>(entity =>
+        {
+            entity.ToTable("OidcLogoutTokenReplays");
+
+            entity.HasKey(replay => replay.JtiHash);
+
+            entity.Property(replay => replay.JtiHash)
+                .HasMaxLength(64);
+
+            entity.Property(replay => replay.Issuer)
+                .HasMaxLength(512)
+                .IsRequired();
+
+            entity.HasIndex(replay => replay.ExpiresAtUtc);
         });
     }
 }
