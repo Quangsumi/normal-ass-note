@@ -1,11 +1,11 @@
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using NormalAssNote.Domain.Notes;
+using NormalAssNote.Domain.Tenants;
 using NormalAssNote.Infrastructure.Authentication;
 using NormalAssNote.Infrastructure.Identity;
+using NormalAssNote.Infrastructure.Persistence.Configurations;
 
 namespace NormalAssNote.Infrastructure.Persistence;
 
@@ -14,6 +14,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     , IDataProtectionKeyContext // add table DataProtectionKeys
 {
     public DbSet<Note> Notes => Set<Note>();
+
+    public DbSet<Tenant> Tenants => Set<Tenant>();
+
+    public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
+
     internal DbSet<AuthenticationSession> AuthenticationSessions => Set<AuthenticationSession>();
 
     /// <summary>
@@ -26,6 +31,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+
+        builder.ApplyConfiguration(new TenantConfiguration());
+        builder.ApplyConfiguration(new TenantMembershipConfiguration());
 
         builder.Entity<Note>(entity =>
         {

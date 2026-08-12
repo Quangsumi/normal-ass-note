@@ -4,6 +4,13 @@ using Microsoft.Extensions.Configuration;
 
 namespace NormalAssNote.Infrastructure.Persistence;
 
+// This class is used to create an instance of the AppDbContext at design time,
+// which is necessary for certain Entity Framework Core commands, such as migrations.
+// It implements the IDesignTimeDbContextFactory interface, which requires the implementation of the CreateDbContext method.
+// This method reads the configuration from appsettings.json and environment variables to construct the connection string and
+// create a new instance of AppDbContext with the appropriate options.
+//
+// Design-time is when you are working with the database schema, such as creating or applying migrations, rather than running the application itself.
 public sealed class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
 {
     public AppDbContext CreateDbContext(string[] args)
@@ -12,12 +19,11 @@ public sealed class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
             .SetBasePath(FindServerDirectory())
             .AddJsonFile("appsettings.json", optional: true)
             .AddJsonFile("appsettings.Development.json", optional: true)
+            .AddUserSecrets<AppDbContextFactory>(optional: true)
             .AddEnvironmentVariables()
             .Build();
 
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? Environment.GetEnvironmentVariable("NORMAL_ASS_NOTE_CONNECTION")
-            ?? "Host=localhost;Port=5432;Database=normal_ass_note;Username=postgres;Password=postgres";
+        var connectionString = configuration.GetConnectionString("DefaultConnection");
 
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql(connectionString)

@@ -1,0 +1,28 @@
+Manage user session on Keycloak:
+	https://auth.lab/realms/homelab/account
+
+Manage user session on Note, table AuthenticationSession:
+	GET    /api/me/sessions
+	DELETE /api/me/sessions/{publicSessionId}
+	POST   /api/me/sessions/revoke-others
+	DELETE /api/me/sessions
+
+Note app use Keycloak Admin REST API
+	GET    /admin/realms/{realm}/users/{user-id}/sessions
+	DELETE /admin/realms/{realm}/sessions/{session-id}
+	POST   /admin/realms/{realm}/users/{user-id}/logout
+
+
+[Compare app-owned tenants with Keycloak Organizations.]
+Keycloak Organizations
+Keycloak Organizations can model B2B organizations, invitations, organization identity providers, and organization claims. It is useful as a later experiment, but it does not replace TenantId data isolation in the Note database. Keycloak Organizations
+I would compare it only after app-owned tenancy works.
+Avoid realm-per-tenant initially. It would require multiple trusted authorities, client registrations, secrets, callback configurations, signing-key sets, and issuer-aware logout validation. Use it only when tenants genuinely require separate credential policy, administrators, identity providers, or regulatory isolation.
+
+
+centralize packages management
+<PackageReference
+    Include="Microsoft.AspNetCore.Authentication.OpenIdConnect"
+    Version="10.0.8" />
+
+how to write test?
