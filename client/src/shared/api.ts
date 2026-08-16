@@ -2,7 +2,10 @@ import { API_BASE } from './constants'
 
 export async function apiRequest(path: string, init?: RequestInit) {
   try {
-    return await fetch(`${API_BASE}${path}`, init)
+    return await fetch(`${API_BASE}${path}`, {
+      credentials: 'same-origin',
+      ...init,
+    })
   } catch {
     return null
   }
@@ -18,7 +21,7 @@ export async function readError(response: Response) {
     return problem.title ?? problem.detail ?? 'request failed'
   } catch {
     try {
-      return await response.text()
+      return (await response.text()) || 'request failed'
     } catch {
       return 'request failed'
     }

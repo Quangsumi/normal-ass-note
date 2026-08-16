@@ -1,88 +1,191 @@
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
-import type { AuthFormState, AuthMode, AuthState } from '../../shared/types'
+import type {
+  AuthMethod,
+  LegacyAuthFormState,
+  LegacyAuthMode,
+  LegacyAuthState,
+  OidcSessionState,
+} from '../../shared/types'
 
 type SavePanelProps = {
-  auth: AuthState | null
-  authForm: AuthFormState
-  authMode: AuthMode
+  activeAuthMethod: AuthMethod
+  legacyAuth: LegacyAuthState | null
+  legacyAuthForm: LegacyAuthFormState
+  legacyAuthMode: LegacyAuthMode
   message: string
-  showAuth: boolean
-  onAuthFormChange: Dispatch<SetStateAction<AuthFormState>>
+  oidcSession: OidcSessionState
+  showLegacyAuth: boolean
+  onLegacyAuthFormChange: Dispatch<SetStateAction<LegacyAuthFormState>>
+  onLegacyLogout: () => void
   onLoadFromDatabase: () => void | Promise<void>
-  onLogout: () => void
+  onOidcLogin: () => void
+  onOidcLogout: () => void
+  onRefreshOidcSession: () => void | Promise<void>
   onSaveToDatabase: () => void | Promise<void>
-  onSubmitAuth: (event: FormEvent<HTMLFormElement>) => void | Promise<void>
-  onToggleAuthMode: () => void
+  onSelectAuthMethod: (authMethod: AuthMethod) => void
+  onSubmitLegacyAuth: (event: FormEvent<HTMLFormElement>) => void | Promise<void>
+  onToggleLegacyAuth: () => void
+  onToggleLegacyAuthMode: () => void
 }
 
 export function SavePanel({
-  auth,
-  authForm,
-  authMode,
+  activeAuthMethod,
+  legacyAuth,
+  legacyAuthForm,
+  legacyAuthMode,
   message,
-  showAuth,
-  onAuthFormChange,
+  oidcSession,
+  showLegacyAuth,
+  onLegacyAuthFormChange,
+  onLegacyLogout,
   onLoadFromDatabase,
-  onLogout,
+  onOidcLogin,
+  onOidcLogout,
+  onRefreshOidcSession,
   onSaveToDatabase,
-  onSubmitAuth,
-  onToggleAuthMode,
+  onSelectAuthMethod,
+  onSubmitLegacyAuth,
+  onToggleLegacyAuth,
+  onToggleLegacyAuthMode,
 }: SavePanelProps) {
-  function updateAuthField(field: keyof AuthFormState, value: string) {
-    onAuthFormChange((current) => ({
+  function updateLegacyAuthField(field: keyof LegacyAuthFormState, value: string) {
+    onLegacyAuthFormChange((current) => ({
       ...current,
       [field]: value,
     }))
   }
 
+  const activeAuthLabel = activeAuthMethod === 'oidc' ? 'OIDC cookie' : 'legacy JWT'
+
   return (
     <aside className="save-panel" contentEditable={false}>
-      <button type="button" onClick={() => void onSaveToDatabase()}>
-        save to db
-      </button>
-      <button type="button" onClick={() => void onLoadFromDatabase()}>
-        load from db
-      </button>
-      {auth && (
-        <button type="button" onClick={onLogout}>
-          logout {auth.userName}
+      <div className="database-actions">
+        <span>database auth: {activeAuthLabel}</span>
+        <button type="button" onClick={() => void onSaveToDatabase()}>
+          save to db
         </button>
-      )}
+        <button type="button" onClick={() => void onLoadFromDatabase()}>
+          load from db
+        </button>
+      </div>
 
-      {showAuth && (
-        <form onSubmit={(event) => void onSubmitAuth(event)}>
-          <input
-            aria-label="username"
-            autoComplete="username"
-            onChange={(event) => updateAuthField('userName', event.target.value)}
-            placeholder="username"
-            value={authForm.userName}
-          />
-          <input
-            aria-label="password"
-            autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
-            onChange={(event) => updateAuthField('password', event.target.value)}
-            placeholder="password"
-            type="password"
-            value={authForm.password}
-          />
-          {authMode === 'register' && (
+      <fieldset className={activeAuthMethod === 'oidc' ? 'auth-method active' : 'auth-method'}>
+        <legend>OIDC / Keycloak</legend>
+
+        {oidcSession.status === 'loading' && <span>checking OIDC session...</span>}
+
+        {oidcSession.status === 'unavailable' && (
+          <>
+            <span>OIDC session unavailable</span>
+            <button type="button" onClick={() => void onRefreshOidcSession()}>
+              retry OIDC session
+            </button>
+          </>
+        )}
+
+        {oidcSession.status === 'anonymous' && (
+          <>
+            <span>not signed in with OIDC</span>
+            <button type="button" onClick={onOidcLogin}>
+              login with OIDC
+            </button>
+          </>
+        )}
+
+        {oidcSession.status === 'authenticated' && (
+          <>
+            <span>
+              OIDC user: {oidcSession.displayName}
+              {oidcSession.displayName !== oidcSession.userName
+                ? ` (${oidcSession.userName})`
+                : ''}
+            </span>
+            <button type="button" onClick={onOidcLogout}>
+              logout OIDC
+            </button>
+          </>
+        )}
+
+        <button
+          type="button"
+          disabled={activeAuthMethod === 'oidc'}
+          onClick={() => onSelectAuthMethod('oidc')}
+        >
+          {activeAuthMethod === 'oidc' ? 'using OIDC for database' : 'use OIDC for database'}
+        </button>
+      </fieldset>
+
+      <fieldset className={activeAuthMethod === 'legacy' ? 'auth-method active' : 'auth-method'}>
+        <legend>Legacy username/password JWT</legend>
+
+        {legacyAuth ? (
+          <>
+            <span>legacy JWT user: {legacyAuth.userName}</span>
+            <button type="button" onClick={onLegacyLogout}>
+              logout legacy JWT
+            </button>
+          </>
+        ) : (
+          <>
+            <span>not signed in with legacy JWT</span>
+            <button type="button" onClick={onToggleLegacyAuth}>
+              {showLegacyAuth ? 'hide legacy login' : 'show legacy login'}
+            </button>
+          </>
+        )}
+
+        {showLegacyAuth && !legacyAuth && (
+          <form onSubmit={(event) => void onSubmitLegacyAuth(event)}>
             <input
-              aria-label="confirm password"
-              autoComplete="new-password"
-              onChange={(event) => updateAuthField('confirmPassword', event.target.value)}
-              placeholder="confirm password"
-              type="password"
-              value={authForm.confirmPassword}
+              aria-label="legacy username"
+              autoComplete="username"
+              onChange={(event) => updateLegacyAuthField('userName', event.target.value)}
+              placeholder="legacy username"
+              value={legacyAuthForm.userName}
             />
-          )}
-          <button type="submit">{authMode}</button>
-          <button type="button" onClick={onToggleAuthMode}>
-            {authMode === 'login' ? 'need register' : 'use login'}
-          </button>
-        </form>
-      )}
+            <input
+              aria-label="legacy password"
+              autoComplete={legacyAuthMode === 'login' ? 'current-password' : 'new-password'}
+              onChange={(event) => updateLegacyAuthField('password', event.target.value)}
+              placeholder="legacy password"
+              type="password"
+              value={legacyAuthForm.password}
+            />
+            {legacyAuthMode === 'register' && (
+              <input
+                aria-label="confirm legacy password"
+                autoComplete="new-password"
+                onChange={(event) =>
+                  updateLegacyAuthField('confirmPassword', event.target.value)
+                }
+                placeholder="confirm legacy password"
+                type="password"
+                value={legacyAuthForm.confirmPassword}
+              />
+            )}
+            <button type="submit">legacy {legacyAuthMode}</button>
+            <button type="button" onClick={onToggleLegacyAuthMode}>
+              {legacyAuthMode === 'login'
+                ? 'need legacy registration'
+                : 'use legacy login'}
+            </button>
+          </form>
+        )}
 
+        <button
+          type="button"
+          disabled={activeAuthMethod === 'legacy'}
+          onClick={() => onSelectAuthMethod('legacy')}
+        >
+          {activeAuthMethod === 'legacy'
+            ? 'using legacy JWT for database'
+            : 'use legacy JWT for database'}
+        </button>
+      </fieldset>
+
+      {oidcSession.status === 'unavailable' && (
+        <output className="message">{oidcSession.error}</output>
+      )}
       {message && <output className="message">{message}</output>}
     </aside>
   )

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NormalAssNote.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NormalAssNote.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260810081241_AddDurableOidcSessions")]
+    partial class AddDurableOidcSessions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -263,30 +266,6 @@ namespace NormalAssNote.Infrastructure.Persistence.Migrations
                     b.HasIndex("Issuer", "Subject");
 
                     b.ToTable("AuthenticationSessions", (string)null);
-                });
-
-            modelBuilder.Entity("NormalAssNote.Infrastructure.Authentication.OidcLogoutTokenReplay", b =>
-                {
-                    b.Property<string>("JtiHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTimeOffset>("ExpiresAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Issuer")
-                        .IsRequired()
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)");
-
-                    b.Property<DateTimeOffset>("ReceivedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("JtiHash");
-
-                    b.HasIndex("ExpiresAtUtc");
-
-                    b.ToTable("OidcLogoutTokenReplays", (string)null);
                 });
 
             modelBuilder.Entity("NormalAssNote.Infrastructure.Identity.ApplicationUser", b =>

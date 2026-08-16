@@ -1,11 +1,27 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { apiRequest, readError } from '../shared/api'
 import './App.css'
-import { readLocalAuth, writeLocalAuth } from '../features/auth/authStorage'
+import { apiRequest, readError } from '../shared/api'
+import {
+  readActiveAuthMethod,
+  readLegacyAuth,
+  writeActiveAuthMethod,
+  writeLegacyAuth,
+} from '../features/auth/authStorage'
+import {
+  fetchOidcSession,
+  startOidcLogin,
+  submitOidcLogout,
+} from '../features/auth/oidcSession'
 import { SavePanel } from '../features/auth/SavePanel'
-import { TabBar } from '../features/notes/TabBar'
-import { API_BASE, EDITOR_DOCUMENT } from '../shared/constants'
+import {
+  legacyGetNote,
+  legacyListNotes,
+  legacySyncNotes,
+  oidcGetNote,
+  oidcListNotes,
+  oidcSyncNotes,
+} from '../features/database/databaseApi'
 import {
   createDatabaseSnapshot,
   createDatabaseSyncRequest,
@@ -15,31 +31,41 @@ import {
   markDatabaseSnapshotContentLoaded,
 } from '../features/database/databaseChanges'
 import type { DatabaseSnapshot } from '../features/database/databaseChanges'
+import { TabBar } from '../features/notes/TabBar'
 import { useNoteTabs } from '../features/notes/useNoteTabs'
 import { fromSavedNote, normalizeContent } from '../features/notes/notes'
+import { API_BASE, EDITOR_DOCUMENT } from '../shared/constants'
 import type {
-  AuthFormState,
-  AuthMode,
-  AuthState,
+  AuthMethod,
   DatabaseAction,
+  LegacyAuthFormState,
+  LegacyAuthMode,
+  LegacyAuthState,
   NoteTab,
+  OidcSessionState,
   SavedNote,
 } from '../shared/types'
 
-const EMPTY_AUTH_FORM: AuthFormState = {
+const EMPTY_LEGACY_AUTH_FORM: LegacyAuthFormState = {
   userName: '',
   password: '',
   confirmPassword: '',
 }
 
 function App() {
-  const [auth, setAuth] = useState<AuthState | null>(readLocalAuth)
-  const [authMode, setAuthMode] = useState<AuthMode>('login')
-  const [authForm, setAuthForm] = useState<AuthFormState>(EMPTY_AUTH_FORM)
-  const [showAuth, setShowAuth] = useState(false)
+  const [activeAuthMethod, setActiveAuthMethod] =
+    useState<AuthMethod>(readActiveAuthMethod)
+  const [legacyAuth, setLegacyAuth] = useState<LegacyAuthState | null>(readLegacyAuth)
+  const [legacyAuthMode, setLegacyAuthMode] = useState<LegacyAuthMode>('login')
+  const [legacyAuthForm, setLegacyAuthForm] =
+    useState<LegacyAuthFormState>(EMPTY_LEGACY_AUTH_FORM)
+  const [oidcSession, setOidcSession] =
+    useState<OidcSessionState>({ status: 'loading' })
+  const [showLegacyAuth, setShowLegacyAuth] = useState(false)
   const [pendingDatabaseAction, setPendingDatabaseAction] =
     useState<DatabaseAction | null>(null)
   const [message, setMessage] = useState('')
+  const activeAuthMethodRef = useRef(activeAuthMethod)
   const databaseSnapshotRef = useRef<DatabaseSnapshot | null>(null)
 
   const {
@@ -63,62 +89,124 @@ function App() {
     tabsWithCurrentEditor,
   } = useNoteTabs(() => setMessage(''), ensureDatabaseTabContent)
 
+  const refreshOidcSession = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setOidcSession({ status: 'loading' })
+    }
+
+    const nextSession = await fetchOidcSession()
+    setOidcSession(nextSession)
+    return nextSession
+  }, [])
+
   useEffect(() => {
-    if (!auth) {
-      databaseSnapshotRef.current = null
+    writeLegacyAuth(legacyAuth)
+  }, [legacyAuth])
+
+  useEffect(() => {
+    writeActiveAuthMethod(activeAuthMethod)
+  }, [activeAuthMethod])
+
+  useEffect(() => {
+    void fetchOidcSession().then(setOidcSession)
+
+    const revalidateOidcSession = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshOidcSession()
+      }
     }
 
-    writeLocalAuth(auth)
-  }, [auth])
+    window.addEventListener('focus', revalidateOidcSession)
+    document.addEventListener('visibilitychange', revalidateOidcSession)
 
-  function requireDatabaseAuth(action: DatabaseAction) {
-    if (auth) {
-      return auth.token
+    return () => {
+      window.removeEventListener('focus', revalidateOidcSession)
+      document.removeEventListener('visibilitychange', revalidateOidcSession)
+    }
+  }, [refreshOidcSession])
+
+  function requireDatabaseAuth(action: DatabaseAction, authMethod: AuthMethod) {
+    if (authMethod === 'legacy') {
+      if (legacyAuth) {
+        return true
+      }
+
+      setPendingDatabaseAction(action)
+      setShowLegacyAuth(true)
+      setMessage(
+        action === 'save'
+          ? 'use legacy login or registration to save with the legacy JWT method'
+          : 'use legacy login or registration to load with the legacy JWT method',
+      )
+      return false
     }
 
-    setPendingDatabaseAction(action)
-    setShowAuth(true)
+    if (oidcSession.status === 'authenticated') {
+      return true
+    }
+
+    if (oidcSession.status === 'loading') {
+      setMessage('wait for the OIDC session check to finish')
+      return false
+    }
+
+    if (oidcSession.status === 'unavailable') {
+      setMessage('the OIDC session endpoint is unavailable; retry the OIDC session check')
+      return false
+    }
+
     setMessage(
       action === 'save'
-        ? 'login or register to save to database'
-        : 'login or register to load database notes',
+        ? 'login with OIDC before saving with the OIDC cookie method'
+        : 'login with OIDC before loading with the OIDC cookie method',
     )
-    return null
+    return false
   }
 
   async function saveToDatabase() {
+    const authMethod = activeAuthMethodRef.current
     const nextTabs = tabsWithCurrentEditor()
-    const token = requireDatabaseAuth('save')
-    if (token) {
-      await confirmAndSyncDatabaseNotes(token, nextTabs)
+
+    if (requireDatabaseAuth('save', authMethod)) {
+      await confirmAndSyncDatabaseNotes(authMethod, nextTabs)
     }
   }
 
   async function loadFromDatabase() {
-    const token = requireDatabaseAuth('load')
-    if (token) {
-      await fetchDatabaseNotes(token)
+    const authMethod = activeAuthMethodRef.current
+
+    if (requireDatabaseAuth('load', authMethod)) {
+      await fetchDatabaseNotes(authMethod)
     }
   }
 
-  async function fetchDatabaseNotes(token: string) {
-    setMessage('loading database notes')
-    const contentNoteQuery = activeId
-      ? `?contentNoteId=${encodeURIComponent(activeId)}`
-      : ''
+  async function fetchDatabaseNotes(
+    authMethod: AuthMethod,
+    legacyToken = legacyAuth?.token,
+  ) {
+    setMessage(`loading database notes with ${formatAuthMethod(authMethod)}`)
 
-    const response = await apiRequest(`/notes${contentNoteQuery}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+    const response =
+      authMethod === 'oidc'
+        ? await oidcListNotes(activeId || undefined)
+        : legacyToken
+          ? await legacyListNotes(legacyToken, activeId || undefined)
+          : null
+
+    if (activeAuthMethodRef.current !== authMethod) {
+      return
+    }
 
     if (!response) {
       setMessage(`database load failed: API not reachable at ${API_BASE}`)
       return
     }
 
-    if (!(await handleDatabaseResponse(response))) {
+    if (!(await handleDatabaseResponse(response, authMethod))) {
+      return
+    }
+
+    if (activeAuthMethodRef.current !== authMethod) {
       return
     }
 
@@ -132,8 +220,8 @@ function App() {
     replaceWorkingTabs(nextTabs, nextActiveId)
     setMessage(
       nextTabs.length === 0
-        ? 'database has no notes yet'
-        : `loaded ${nextTabs.length} note${nextTabs.length === 1 ? '' : 's'} from database`,
+        ? `database has no notes for ${formatAuthMethod(authMethod)}`
+        : `loaded ${nextTabs.length} note${nextTabs.length === 1 ? '' : 's'} with ${formatAuthMethod(authMethod)}`,
     )
   }
 
@@ -143,26 +231,34 @@ function App() {
       return currentTabs
     }
 
-    if (!auth) {
-      setShowAuth(true)
-      setMessage('login or register to load note content')
+    const authMethod = activeAuthMethodRef.current
+    if (!requireDatabaseAuth('load', authMethod)) {
       return null
     }
 
-    setMessage('loading note content')
+    setMessage(`loading note content with ${formatAuthMethod(authMethod)}`)
 
-    const response = await apiRequest(`/notes/${encodeURIComponent(tabId)}`, {
-      headers: {
-        Authorization: `Bearer ${auth.token}`,
-      },
-    })
+    const response =
+      authMethod === 'oidc'
+        ? await oidcGetNote(tabId)
+        : legacyAuth
+          ? await legacyGetNote(legacyAuth.token, tabId)
+          : null
+
+    if (activeAuthMethodRef.current !== authMethod) {
+      return null
+    }
 
     if (!response) {
       setMessage(`database load failed: API not reachable at ${API_BASE}`)
       return null
     }
 
-    if (!(await handleDatabaseResponse(response))) {
+    if (!(await handleDatabaseResponse(response, authMethod))) {
+      return null
+    }
+
+    if (activeAuthMethodRef.current !== authMethod) {
       return null
     }
 
@@ -182,7 +278,11 @@ function App() {
     )
   }
 
-  async function confirmAndSyncDatabaseNotes(token: string, nextTabs: NoteTab[]) {
+  async function confirmAndSyncDatabaseNotes(
+    authMethod: AuthMethod,
+    nextTabs: NoteTab[],
+    legacyToken = legacyAuth?.token,
+  ) {
     const summary = getDatabaseChangeSummary(nextTabs, databaseSnapshotRef.current)
 
     if (!hasDatabaseChanges(summary)) {
@@ -195,28 +295,40 @@ function App() {
       return
     }
 
-    await syncDatabaseNotes(token, nextTabs)
+    await syncDatabaseNotes(authMethod, nextTabs, legacyToken)
   }
 
-  async function syncDatabaseNotes(token: string, nextTabs: NoteTab[]) {
-    setMessage('saving to database')
+  async function syncDatabaseNotes(
+    authMethod: AuthMethod,
+    nextTabs: NoteTab[],
+    legacyToken = legacyAuth?.token,
+  ) {
+    setMessage(`saving to database with ${formatAuthMethod(authMethod)}`)
     const syncRequest = createDatabaseSyncRequest(nextTabs, databaseSnapshotRef.current)
 
-    const response = await apiRequest('/notes/sync', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(syncRequest),
-    })
+    const response =
+      authMethod === 'oidc'
+        ? oidcSession.status === 'authenticated'
+          ? await oidcSyncNotes(syncRequest, oidcSession.csrfToken)
+          : null
+        : legacyToken
+          ? await legacySyncNotes(legacyToken, syncRequest)
+          : null
+
+    if (activeAuthMethodRef.current !== authMethod) {
+      return
+    }
 
     if (!response) {
       setMessage(`database save failed: API not reachable at ${API_BASE}`)
       return
     }
 
-    if (!(await handleDatabaseResponse(response))) {
+    if (!(await handleDatabaseResponse(response, authMethod))) {
+      return
+    }
+
+    if (activeAuthMethodRef.current !== authMethod) {
       return
     }
 
@@ -225,38 +337,60 @@ function App() {
     databaseSnapshotRef.current = createDatabaseSnapshot(syncedTabs)
     setTabsInMemory(syncedTabs)
     const changeCount = syncRequest.notes.length + syncRequest.deletedNoteIds.length
-    setMessage(`saved ${changeCount} database change${changeCount === 1 ? '' : 's'}`)
+    setMessage(
+      `saved ${changeCount} database change${changeCount === 1 ? '' : 's'} with ${formatAuthMethod(authMethod)}`,
+    )
   }
 
-  async function handleDatabaseResponse(response: Response) {
+  async function handleDatabaseResponse(response: Response, authMethod: AuthMethod) {
     if (response.status === 401) {
-      setAuth(null)
-      setShowAuth(true)
-      setMessage('session expired')
+      databaseSnapshotRef.current = null
+
+      if (authMethod === 'legacy') {
+        setLegacyAuth(null)
+        setShowLegacyAuth(true)
+        setMessage('legacy JWT expired; use legacy login again')
+      } else {
+        const refreshedSession = await refreshOidcSession()
+        setMessage(
+          refreshedSession.status === 'authenticated'
+            ? 'OIDC request was unauthorized even though the session endpoint is authenticated'
+            : 'OIDC session expired; login with OIDC again',
+        )
+      }
+
       return false
     }
 
     if (!response.ok) {
-      setMessage(await readError(response))
+      const error = await readError(response)
+
+      if (authMethod === 'oidc' && response.status === 400) {
+        await refreshOidcSession()
+        setMessage(`${error} A fresh OIDC CSRF token was requested; retry the save.`)
+      } else {
+        setMessage(error)
+      }
+
       return false
     }
 
     return true
   }
 
-  async function submitAuth(event: FormEvent<HTMLFormElement>) {
+  async function submitLegacyAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    const response = await apiRequest(`/auth/${authMode}`, {
+    const response = await apiRequest(`/legacy/auth/${legacyAuthMode}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(createAuthPayload(authMode, authForm)),
+      body: JSON.stringify(createLegacyAuthPayload(legacyAuthMode, legacyAuthForm)),
     })
 
     if (!response) {
-      setMessage(`auth failed: API not reachable at ${API_BASE}`)
+      setMessage(`legacy auth failed: API not reachable at ${API_BASE}`)
       return
     }
 
@@ -265,35 +399,99 @@ function App() {
       return
     }
 
-    const nextAuth = (await response.json()) as AuthState
+    const nextLegacyAuth = (await response.json()) as LegacyAuthState
     const databaseAction = pendingDatabaseAction
-    setAuth(nextAuth)
-    setShowAuth(false)
+    setLegacyAuth(nextLegacyAuth)
+    setShowLegacyAuth(false)
     setPendingDatabaseAction(null)
-    setAuthForm(EMPTY_AUTH_FORM)
-    setMessage(`${authMode === 'login' ? 'logged in' : 'registered'} as ${nextAuth.userName}`)
+    setLegacyAuthForm(EMPTY_LEGACY_AUTH_FORM)
+    setMessage(
+      `${legacyAuthMode === 'login' ? 'logged in' : 'registered'} as ${nextLegacyAuth.userName} with legacy JWT`,
+    )
+
+    if (activeAuthMethodRef.current !== 'legacy') {
+      return
+    }
 
     if (databaseAction === 'save') {
-      await confirmAndSyncDatabaseNotes(nextAuth.token, tabsWithCurrentEditor())
+      await confirmAndSyncDatabaseNotes(
+        'legacy',
+        tabsWithCurrentEditor(),
+        nextLegacyAuth.token,
+      )
     }
 
     if (databaseAction === 'load') {
-      await fetchDatabaseNotes(nextAuth.token)
+      await fetchDatabaseNotes('legacy', nextLegacyAuth.token)
     }
   }
 
-  function toggleAuthMode() {
-    setAuthMode((current) => (current === 'login' ? 'register' : 'login'))
-    setAuthForm((current) => ({ ...current, confirmPassword: '' }))
+  function toggleLegacyAuthMode() {
+    setLegacyAuthMode((current) => (current === 'login' ? 'register' : 'login'))
+    setLegacyAuthForm((current) => ({ ...current, confirmPassword: '' }))
   }
 
-  function logout() {
-    setAuth(null)
-    setShowAuth(false)
+  function selectAuthMethod(nextAuthMethod: AuthMethod) {
+    if (nextAuthMethod === activeAuthMethodRef.current) {
+      return
+    }
+
+    tabsWithCurrentEditor()
+    const nextLabel = formatAuthMethod(nextAuthMethod)
+
+    if (
+      !window.confirm(
+        `Switch database authentication to ${nextLabel}?\n\nThe current working tabs and database snapshot will be cleared so notes from two accounts cannot be mixed.`,
+      )
+    ) {
+      return
+    }
+
+    activeAuthMethodRef.current = nextAuthMethod
+    setActiveAuthMethod(nextAuthMethod)
     setPendingDatabaseAction(null)
-    setAuthForm(EMPTY_AUTH_FORM)
+    setShowLegacyAuth(false)
+    databaseSnapshotRef.current = null
     resetTabs()
-    setMessage('logged out')
+    setMessage(`using ${nextLabel} for database operations`)
+  }
+
+  function loginWithOidc() {
+    if (
+      window.confirm(
+        'OIDC login navigates away from this page. Unsaved in-memory notes will be lost. Continue to Keycloak?',
+      )
+    ) {
+      startOidcLogin('/')
+    }
+  }
+
+  function logoutOidc() {
+    if (oidcSession.status !== 'authenticated') {
+      return
+    }
+
+    if (
+      window.confirm(
+        'OIDC logout navigates away from this page. Unsaved in-memory notes will be lost. Continue?',
+      )
+    ) {
+      submitOidcLogout(oidcSession.csrfToken)
+    }
+  }
+
+  function logoutLegacy() {
+    setLegacyAuth(null)
+    setShowLegacyAuth(false)
+    setPendingDatabaseAction(null)
+    setLegacyAuthForm(EMPTY_LEGACY_AUTH_FORM)
+
+    if (activeAuthMethodRef.current === 'legacy') {
+      databaseSnapshotRef.current = null
+      resetTabs()
+    }
+
+    setMessage('logged out of legacy JWT')
   }
 
   return (
@@ -307,17 +505,26 @@ function App() {
       />
 
       <SavePanel
-        auth={auth}
-        authForm={authForm}
-        authMode={authMode}
+        activeAuthMethod={activeAuthMethod}
+        legacyAuth={legacyAuth}
+        legacyAuthForm={legacyAuthForm}
+        legacyAuthMode={legacyAuthMode}
         message={message}
-        showAuth={showAuth}
-        onAuthFormChange={setAuthForm}
+        oidcSession={oidcSession}
+        showLegacyAuth={showLegacyAuth}
+        onLegacyAuthFormChange={setLegacyAuthForm}
+        onLegacyLogout={logoutLegacy}
         onLoadFromDatabase={loadFromDatabase}
-        onLogout={logout}
+        onOidcLogin={loginWithOidc}
+        onOidcLogout={logoutOidc}
+        onRefreshOidcSession={() => {
+          void refreshOidcSession(true)
+        }}
         onSaveToDatabase={saveToDatabase}
-        onSubmitAuth={submitAuth}
-        onToggleAuthMode={toggleAuthMode}
+        onSelectAuthMethod={selectAuthMethod}
+        onSubmitLegacyAuth={submitLegacyAuth}
+        onToggleLegacyAuth={() => setShowLegacyAuth((current) => !current)}
+        onToggleLegacyAuthMode={toggleLegacyAuthMode}
       />
 
       <TabBar
@@ -338,7 +545,10 @@ function App() {
   )
 }
 
-function createAuthPayload(authMode: AuthMode, authForm: AuthFormState) {
+function createLegacyAuthPayload(
+  authMode: LegacyAuthMode,
+  authForm: LegacyAuthFormState,
+) {
   if (authMode === 'register') {
     return authForm
   }
@@ -347,6 +557,10 @@ function createAuthPayload(authMode: AuthMode, authForm: AuthFormState) {
     userName: authForm.userName,
     password: authForm.password,
   }
+}
+
+function formatAuthMethod(authMethod: AuthMethod) {
+  return authMethod === 'oidc' ? 'OIDC cookie' : 'legacy JWT'
 }
 
 function mergeSyncedNotes(

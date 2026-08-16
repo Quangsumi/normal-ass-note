@@ -1,6 +1,7 @@
-using System.Security.Claims;
 using NormalAssNote.Api.Auth;
+using NormalAssNote.Api.Security;
 using NormalAssNote.Application.Notes;
+using System.Security.Claims;
 
 namespace NormalAssNote.Api.Endpoints;
 
@@ -8,11 +9,15 @@ public static class NoteEndpoints
 {
     public static IEndpointRouteBuilder MapNoteEndpoints(this IEndpointRouteBuilder app)
     {
-        var notes = app.MapGroup("/api/notes").RequireAuthorization();
+        var browserNotes = app.MapGroup("/api/notes").RequireAuthorization("BrowserCookie");
+        browserNotes.MapGet("", ListAsync);
+        browserNotes.MapGet("/{noteId}", GetAsync);
+        browserNotes.MapPost("/sync", SyncAsync).RequireValidAntiforgeryToken();
 
-        notes.MapGet("", ListAsync);
-        notes.MapGet("/{noteId}", GetAsync);
-        notes.MapPost("/sync", SyncAsync);
+        var legacyNotes = app.MapGroup("/api/legacy/notes").RequireAuthorization("LegacyBearer");
+        legacyNotes.MapGet("", ListAsync);
+        legacyNotes.MapGet("/{noteId}", GetAsync);
+        legacyNotes.MapPost("/sync", SyncAsync);
 
         return app;
     }
